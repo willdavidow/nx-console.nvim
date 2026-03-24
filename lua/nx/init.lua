@@ -56,6 +56,17 @@ function M.setup(opts)
     require("nx.generators").pick()
   end, { desc = "Nx: generator picker + form" })
 
+  vim.api.nvim_create_user_command("NxGraph", function()
+    local root = workspace.root()
+    if not root then
+      require("nx.notify").warn("No Nx workspace detected")
+      return
+    end
+    local cmd = workspace.nx_bin() .. " graph"
+    require("nx.notify").info("Opening Nx graph in browser...")
+    vim.fn.jobstart(cmd, { cwd = root, detach = true })
+  end, { desc = "Nx: open project graph in browser" })
+
   -- Register keymaps
   local keys = cfg.keys
   if keys.projects then
