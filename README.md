@@ -49,6 +49,7 @@ A first-class Nx monorepo experience for Neovim, powered by [snacks.nvim](https:
     { "<leader>nr", "<cmd>NxRerun<cr>", desc = "Nx: rerun last" },
     { "<leader>ns", "<cmd>NxStop<cr>", desc = "Nx: stop tasks" },
     { "<leader>nR", "<cmd>NxRefresh<cr>", desc = "Nx: refresh" },
+    { "<leader>np", "<cmd>NxPanel<cr>", desc = "Nx: panel" },
   },
 }
 ```
@@ -85,6 +86,7 @@ All keymaps use `<leader>n` as the namespace and are fully remappable via config
 | `<leader>nr` | `:NxRerun` |
 | `<leader>ns` | `:NxStop` |
 | `<leader>nR` | `:NxRefresh` |
+| `<leader>np` | `:NxPanel` |
 
 ## Task Panel
 
@@ -96,9 +98,10 @@ Long-running tasks (`serve`, `dev`, `start`, `watch`, `storybook`, and any targe
 |---|---|
 | `]t` | Next task buffer |
 | `[t` | Previous task buffer |
+| `<C-c>` | Kill the active process |
 | `q` | Hide panel (processes keep running) |
 
-Toggle with `:NxPanel`. Pick a specific task with `:NxPanelPick`.
+The panel shows a statusline with the active task name and buffer count (e.g. `󱄅 my-app:serve [1/3] ●`). Toggle with `<leader>np` or `:NxPanel`. Pick a specific task with `:NxPanelPick`.
 
 ## Sidebar Explorer
 
@@ -113,7 +116,7 @@ Toggle with `:NxPanel`. Pick a specific task with `:NxPanelPick`.
 | `r` | Refresh workspace data |
 | `q` | Close sidebar |
 
-Running targets show a `●` indicator with green highlighting.
+Running targets show a `●` indicator with green highlighting. The sidebar auto-refreshes when tasks start or stop — no need to manually refresh.
 
 ## Statusline Integration
 
@@ -190,6 +193,7 @@ require("nx").setup({
     rerun      = "<leader>nr",
     stop       = "<leader>ns",
     refresh    = "<leader>nR",
+    panel      = "<leader>np",
   },
 })
 ```

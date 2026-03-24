@@ -247,6 +247,49 @@ local function setup_keymaps(split, tree_fn)
   end, { noremap = true, silent = true })
 end
 
+--- Refresh the sidebar tree, preserving expand/collapse state.
+function M.refresh()
+  if not state.split or not state.tree then return end
+
+  -- Capture which nodes are currently expanded
+  local expanded = {}
+  local function collect_expanded(node_ids, parent_id)
+    local nodes = state.tree:get_nodes(parent_id)
+    for _, node in ipairs(nodes) do
+      if node:is_expanded() then
+        expanded[node:get_id()] = true
+      end
+      if node:has_children() then
+        collect_expanded(expanded, node:get_id())
+      end
+    end
+  end
+  collect_expanded(expanded, nil)
+
+  -- Rebuild tree nodes
+  local NuiTree = require("nui.tree")
+  projects.list(function(names)
+    if #names == 0 then return end
+    build_tree_nodes(names, function(nodes)
+      state.tree:set_nodes(nodes)
+      -- Re-expand previously expanded nodes
+      local function restore_expanded(parent_id)
+        local tree_nodes = state.tree:get_nodes(parent_id)
+        for _, node in ipairs(tree_nodes) do
+          if expanded[node:get_id()] then
+            node:expand()
+          end
+          if node:has_children() then
+            restore_expanded(node:get_id())
+          end
+        end
+      end
+      restore_expanded(nil)
+      state.tree:render()
+    end)
+  end)
+end
+
 function M.open()
   if state.split then
     if state.split.winid and vim.api.nvim_win_is_valid(state.split.winid) then
@@ -294,6 +337,17 @@ function M.open()
 
   local tree = setup_tree(split)
   setup_keymaps(split, function() return state.tree end)
+
+  -- Auto-refresh sidebar when task state changes
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "NxTaskChanged",
+    group = vim.api.nvim_create_augroup("NxSidebarRefresh", { clear = true }),
+    callback = function()
+      if state.split and state.tree then
+        M.refresh()
+      end
+    end,
+  })
 end
 
 function M.close()
@@ -302,6 +356,8 @@ function M.close()
     state.split = nil
     state.tree = nil
   end
+  -- Stop listening for task changes
+  pcall(vim.api.nvim_del_augroup_by_name, "NxSidebarRefresh")
 end
 
 function M.toggle()

@@ -7,6 +7,11 @@ local M = {}
 
 local running_tasks = {}
 
+--- Notify sidebar and other listeners that task state changed.
+local function fire_task_changed()
+  vim.api.nvim_exec_autocmds("User", { pattern = "NxTaskChanged" })
+end
+
 --- Check if a target name is typically long-running.
 --- Matches if the target equals or contains any pattern in the configured list.
 --- @param target string
@@ -77,6 +82,7 @@ function M.run(project, target, extra_args)
             }
             history.add(hist_entry)
             history.save()
+            fire_task_changed()
           end)
         end,
       })
@@ -91,6 +97,7 @@ function M.run(project, target, extra_args)
       buf = bufnr,
     }
     table.insert(running_tasks, task_entry)
+    fire_task_changed()
 
     if config.get().panel.auto_show then
       panel.show()
@@ -144,6 +151,7 @@ function M.run(project, target, extra_args)
     term = term,
   }
   table.insert(running_tasks, task_entry)
+  fire_task_changed()
 
   if cfg.notify_on_complete and term and term.buf then
     vim.api.nvim_create_autocmd("TermClose", {
@@ -177,6 +185,7 @@ function M.run(project, target, extra_args)
         }
         history.add(hist_entry)
         history.save()
+        fire_task_changed()
       end,
     })
   end

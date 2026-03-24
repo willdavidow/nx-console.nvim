@@ -46,6 +46,7 @@ local defaults = {
     rerun = "<leader>nr",
     stop = "<leader>ns",
     refresh = "<leader>nR",
+    panel = "<leader>np",
   },
   icons = {
     app = "",

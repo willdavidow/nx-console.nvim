@@ -96,6 +96,9 @@ function M.setup(opts)
   if keys.generate then
     vim.keymap.set("n", keys.generate, "<cmd>NxGenerate<cr>", { desc = "Nx: generate" })
   end
+  if keys.panel then
+    vim.keymap.set("n", keys.panel, "<cmd>NxPanel<cr>", { desc = "Nx: panel" })
+  end
 
   -- which-key integration
   local wk_ok, wk = pcall(require, "which-key")

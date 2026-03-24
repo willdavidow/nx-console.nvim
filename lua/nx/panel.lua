@@ -9,6 +9,22 @@ local state = {
   win = nil,
 }
 
+--- Update the panel window statusline to show the active task and count.
+local function update_title()
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+  local active_entry = state.buffers[state.active_idx]
+  if not active_entry then return end
+  local icons = config.get().icons
+  local total = #state.buffers
+  local idx = state.active_idx
+  local title = " " .. icons.nx .. " " .. active_entry.label
+  if total > 1 then
+    title = title .. "  [" .. idx .. "/" .. total .. "]"
+  end
+  title = title .. "  " .. icons.running
+  vim.wo[state.win].statusline = title
+end
+
 function M.add_buffer(bufnr, label)
   table.insert(state.buffers, { buf = bufnr, label = label })
   state.active_idx = #state.buffers
@@ -17,7 +33,9 @@ function M.add_buffer(bufnr, label)
     vim.keymap.set("n", "]t", function() M.next_buffer() end, map_opts)
     vim.keymap.set("n", "[t", function() M.prev_buffer() end, map_opts)
     vim.keymap.set("n", "q", function() M.hide() end, map_opts)
+    vim.keymap.set({ "n", "t" }, "<C-c>", function() M.kill_active() end, map_opts)
   end
+  update_title()
 end
 
 function M.remove_buffer(bufnr)
@@ -61,6 +79,7 @@ function M.select_buffer(bufnr)
       break
     end
   end
+  update_title()
 end
 
 function M.next_buffer()
@@ -70,6 +89,7 @@ function M.next_buffer()
   if active and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
+  update_title()
 end
 
 function M.prev_buffer()
@@ -82,6 +102,7 @@ function M.prev_buffer()
   if active and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
+  update_title()
 end
 
 function M._apply_keymaps()
@@ -91,6 +112,7 @@ function M._apply_keymaps()
       vim.keymap.set("n", "]t", function() M.next_buffer() end, map_opts)
       vim.keymap.set("n", "[t", function() M.prev_buffer() end, map_opts)
       vim.keymap.set("n", "q", function() M.hide() end, map_opts)
+      vim.keymap.set({ "n", "t" }, "<C-c>", function() M.kill_active() end, map_opts)
     end
   end
 end
@@ -134,6 +156,8 @@ function M.show()
       state.win = nil
     end,
   })
+
+  update_title()
 end
 
 function M.hide()
@@ -192,6 +216,19 @@ function M.pick()
       M.show()
     end,
   })
+end
+
+--- Kill the process running in the active panel buffer.
+function M.kill_active()
+  local active = M.get_active()
+  if not active then return end
+  if vim.api.nvim_buf_is_valid(active.buf) then
+    local chan = vim.bo[active.buf].channel
+    if chan and chan > 0 then
+      vim.fn.jobstop(chan)
+      notify.info("Killed: " .. active.label)
+    end
+  end
 end
 
 function M.reset()
