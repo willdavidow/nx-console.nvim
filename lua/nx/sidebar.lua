@@ -37,23 +37,33 @@ local function build_tree_nodes(project_names, callback)
 
         local function make_project_node(detail)
           local target_nodes = {}
+          local has_running = false
           for _, tgt in ipairs(detail.targets) do
+            local is_running = runner.is_running(detail.name, tgt.name)
+            if is_running then has_running = true end
+            local tgt_icon = is_running and icons.running or icons.target
             table.insert(target_nodes, NuiTree.Node({
               id = detail.name .. ":" .. tgt.name,
-              text = icons.target .. " " .. tgt.name,
+              text = tgt_icon .. " " .. tgt.name,
               type = "target",
               project = detail.name,
               target = tgt.name,
               executor = tgt.executor,
+              is_running = is_running,
             }))
           end
           local pi = detail.type == "application" and icons.app or icons.lib
+          local project_text = pi .. " " .. detail.name
+          if has_running then
+            project_text = project_text .. " " .. icons.running
+          end
           return NuiTree.Node({
             id = detail.name,
-            text = pi .. " " .. detail.name,
+            text = project_text,
             type = "project",
             project = detail.name,
             root = detail.root,
+            has_running = has_running,
           }, target_nodes)
         end
 
@@ -108,9 +118,9 @@ local function setup_tree(split)
       if node.type == "group" then
         line:append(node.text, "Title")
       elseif node.type == "project" then
-        line:append(node.text, "Function")
+        line:append(node.text, node.has_running and "DiagnosticOk" or "Function")
       elseif node.type == "target" then
-        line:append(node.text, "Special")
+        line:append(node.text, node.is_running and "DiagnosticOk" or "Special")
       else
         line:append(node.text)
       end

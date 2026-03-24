@@ -7,10 +7,14 @@ local M = {}
 
 local running_tasks = {}
 
+--- Check if a target name is typically long-running.
+--- Matches if the target equals or contains any pattern in the configured list.
+--- @param target string
+--- @return boolean
 function M.is_long_running(target)
-  local names = config.get().runner.long_running_targets or {}
-  for _, name in ipairs(names) do
-    if target == name then
+  local patterns = config.get().runner.long_running_targets or {}
+  for _, pattern in ipairs(patterns) do
+    if target == pattern or target:find(pattern, 1, true) then
       return true
     end
   end
@@ -180,6 +184,19 @@ end
 
 function M.running_count()
   return #running_tasks
+end
+
+--- Check if a specific project:target is currently running.
+--- @param project string
+--- @param target string
+--- @return boolean
+function M.is_running(project, target)
+  for _, t in ipairs(running_tasks) do
+    if t.project == project and t.target == target then
+      return true
+    end
+  end
+  return false
 end
 
 function M.stop(project, target)

@@ -29,6 +29,15 @@ t.describe("runner.is_long_running", function()
   t.it("returns false for lint targets", function()
     t.assert_eq(false, runner.is_long_running("lint"))
   end)
+
+  t.it("matches storybook targets", function()
+    t.assert_true(runner.is_long_running("storybook"))
+  end)
+
+  t.it("matches targets containing a pattern (substring)", function()
+    t.assert_true(runner.is_long_running("dev-server"))
+    t.assert_true(runner.is_long_running("serve-ssr"))
+  end)
 end)
 
 t.done()

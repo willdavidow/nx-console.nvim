@@ -11,7 +11,7 @@ local defaults = {
     float_height = 0.7,
     auto_close_on_success = false,
     notify_on_complete = true,
-    long_running_targets = { "serve", "dev", "start", "watch" },
+    long_running_targets = { "serve", "dev", "start", "watch", "storybook" },
   },
   panel = {
     position = "bottom",
