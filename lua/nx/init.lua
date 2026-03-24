@@ -44,6 +44,14 @@ function M.setup(opts)
     require("nx.runner").stop()
   end, { desc = "Nx: stop running task(s)" })
 
+  vim.api.nvim_create_user_command("NxPanel", function()
+    require("nx.panel").toggle()
+  end, { desc = "Nx: toggle task panel" })
+
+  vim.api.nvim_create_user_command("NxPanelPick", function()
+    require("nx.panel").pick()
+  end, { desc = "Nx: pick task in panel" })
+
   -- Register keymaps
   local keys = cfg.keys
   if keys.projects then
