@@ -52,6 +52,10 @@ function M.setup(opts)
     require("nx.panel").pick()
   end, { desc = "Nx: pick task in panel" })
 
+  vim.api.nvim_create_user_command("NxGenerate", function()
+    require("nx.generators").pick()
+  end, { desc = "Nx: generator picker + form" })
+
   -- Register keymaps
   local keys = cfg.keys
   if keys.projects then
@@ -77,6 +81,9 @@ function M.setup(opts)
   end
   if keys.stop then
     vim.keymap.set("n", keys.stop, "<cmd>NxStop<cr>", { desc = "Nx: stop tasks" })
+  end
+  if keys.generate then
+    vim.keymap.set("n", keys.generate, "<cmd>NxGenerate<cr>", { desc = "Nx: generate" })
   end
 
   -- which-key integration
