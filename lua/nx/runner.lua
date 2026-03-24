@@ -7,9 +7,6 @@ local M = {}
 
 local running_tasks = {}
 
---- Check if a target name is typically long-running.
---- @param target string
---- @return boolean
 function M.is_long_running(target)
   local names = config.get().runner.long_running_targets or {}
   for _, name in ipairs(names) do
@@ -20,10 +17,6 @@ function M.is_long_running(target)
   return false
 end
 
---- Run an nx target.
---- @param project string project name
---- @param target string target name
---- @param extra_args? string additional CLI flags
 function M.run(project, target, extra_args)
   local root = workspace.root()
   if not root then
@@ -37,14 +30,77 @@ function M.run(project, target, extra_args)
     cmd = cmd .. " " .. extra_args
   end
 
+  local icons = config.get().icons
+  local label = project .. ":" .. target
+  local start_time = vim.uv.now()
+
+  notify.info(icons.running .. " Running " .. label)
+
+  -- Long-running tasks go to the persistent panel
+  if M.is_long_running(target) then
+    local panel = require("nx.panel")
+
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_call(bufnr, function()
+      vim.fn.termopen(cmd, {
+        cwd = root,
+        on_exit = function(_, exit_code)
+          vim.schedule(function()
+            -- Keep buffer in panel for output review; user can close manually.
+            -- Only remove from the running tasks tracker.
+            for i, t in ipairs(running_tasks) do
+              if t.buf == bufnr then
+                table.remove(running_tasks, i)
+                break
+              end
+            end
+
+            local elapsed = (vim.uv.now() - start_time) / 1000
+            local duration = string.format("%.1fs", elapsed)
+            if exit_code == 0 then
+              notify.info(icons.success .. " " .. label .. " completed in " .. duration)
+            else
+              notify.error(icons.failure .. " " .. label .. " failed (exit " .. exit_code .. ") in " .. duration)
+            end
+
+            local hist_entry = {
+              project = project,
+              target = target,
+              cmd = cmd,
+              args = extra_args,
+              exit_code = exit_code,
+              duration = elapsed,
+            }
+            history.add(hist_entry)
+            history.save()
+          end)
+        end,
+      })
+    end)
+
+    panel.add_buffer(bufnr, label)
+    local task_entry = {
+      project = project,
+      target = target,
+      cmd = cmd,
+      start_time = start_time,
+      buf = bufnr,
+    }
+    table.insert(running_tasks, task_entry)
+
+    if config.get().panel.auto_show then
+      panel.show()
+    end
+
+    return
+  end
+
+  -- Short-lived tasks use Snacks.terminal (float by default)
   local ok, snacks = pcall(require, "snacks")
   if not ok then
     notify.error("snacks.nvim is required for the task runner")
     return
   end
-
-  local icons = config.get().icons
-  local label = project .. ":" .. target
 
   local opts = {
     cwd = root,
@@ -52,12 +108,7 @@ function M.run(project, target, extra_args)
     auto_close = false,
   }
 
-  -- Long-running targets always use a split, never a float
   local effective_style = cfg.terminal_style
-  if M.is_long_running(target) and effective_style == "float" then
-    effective_style = "split"
-  end
-
   if effective_style == "float" then
     opts.win = {
       style = "terminal",
@@ -79,9 +130,6 @@ function M.run(project, target, extra_args)
     }
   end
 
-  local start_time = vim.uv.now()
-  notify.info(icons.running .. " Running " .. label)
-
   local term = snacks.terminal(cmd, opts)
 
   local task_entry = {
@@ -93,13 +141,11 @@ function M.run(project, target, extra_args)
   }
   table.insert(running_tasks, task_entry)
 
-  -- Wire up completion notification via TermClose event
   if cfg.notify_on_complete and term and term.buf then
     vim.api.nvim_create_autocmd("TermClose", {
       buffer = term.buf,
       once = true,
       callback = function()
-        -- Remove from running tasks
         for i, t in ipairs(running_tasks) do
           if t == task_entry then
             table.remove(running_tasks, i)
@@ -132,15 +178,10 @@ function M.run(project, target, extra_args)
   end
 end
 
---- Get the number of currently running tasks.
---- @return number
 function M.running_count()
   return #running_tasks
 end
 
---- Stop all running tasks (or filtered by project/target).
---- @param project? string filter by project name
---- @param target? string filter by target name
 function M.stop(project, target)
   local to_stop = {}
   for i = #running_tasks, 1, -1 do
@@ -159,7 +200,14 @@ function M.stop(project, target)
   end
 
   for _, t in ipairs(to_stop) do
-    if t.term and t.term.buf and vim.api.nvim_buf_is_valid(t.term.buf) then
+    -- Panel-managed task (has .buf directly)
+    if t.buf and vim.api.nvim_buf_is_valid(t.buf) then
+      local chan = vim.bo[t.buf].channel
+      if chan and chan > 0 then
+        vim.fn.jobstop(chan)
+      end
+    -- Snacks-managed task (has .term.buf)
+    elseif t.term and t.term.buf and vim.api.nvim_buf_is_valid(t.term.buf) then
       local chan = vim.bo[t.term.buf].channel
       if chan and chan > 0 then
         vim.fn.jobstop(chan)
@@ -169,7 +217,6 @@ function M.stop(project, target)
   notify.info("Stopped " .. #to_stop .. " task(s)")
 end
 
---- Re-run the most recent command from history.
 function M.rerun()
   local entries = history.list()
   if #entries == 0 then
