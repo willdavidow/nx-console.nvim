@@ -38,7 +38,14 @@ function M.save()
   local path = get_path()
   local dir = vim.fn.fnamemodify(path, ":h")
   vim.fn.mkdir(dir, "p")
-  local json = vim.fn.json_encode(entries)
+  -- Strip transient fields before persisting
+  local to_save = {}
+  for _, e in ipairs(entries) do
+    local copy = vim.tbl_extend("force", {}, e)
+    copy._term_buf = nil
+    table.insert(to_save, copy)
+  end
+  local json = vim.fn.json_encode(to_save)
   local f = io.open(path, "w")
   if f then
     f:write(json)

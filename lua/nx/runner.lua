@@ -171,11 +171,6 @@ end
 
 --- Re-run the most recent command from history.
 function M.rerun()
-  local ok, history = pcall(require, "nx.history")
-  if not ok then
-    notify.warn("No history module available")
-    return
-  end
   local entries = history.list()
   if #entries == 0 then
     notify.warn("No previous runs to repeat")
