@@ -1,2 +1,7 @@
 # nx-console.nvim
-An Nx plugin to bring a better Nx experience to Neovim
+
+My attempt at a more VSCode <-> Nx Console-like experience in Neovim.
+
+This plugin is in extreme beta mode.
+
+Feel free to submit pull requests
