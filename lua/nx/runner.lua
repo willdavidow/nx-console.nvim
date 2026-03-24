@@ -1,6 +1,7 @@
 local workspace = require("nx.workspace")
 local config = require("nx.config")
 local notify = require("nx.notify")
+local history = require("nx.history")
 
 local M = {}
 
@@ -114,6 +115,18 @@ function M.run(project, target, extra_args)
         else
           notify.error(icons.failure .. " " .. label .. " failed (exit " .. exit_code .. ") in " .. duration)
         end
+
+        local hist_entry = {
+          project = project,
+          target = target,
+          cmd = cmd,
+          args = extra_args,
+          exit_code = exit_code,
+          duration = elapsed,
+          _term_buf = term and term.buf or nil,
+        }
+        history.add(hist_entry)
+        history.save()
       end,
     })
   end
