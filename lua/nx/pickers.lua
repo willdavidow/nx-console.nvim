@@ -171,4 +171,72 @@ function M.projects()
   end)
 end
 
+--- Open target picker for the current file's project.
+function M.current_file()
+  local nx = require("nx")
+  nx.current_project(function(project)
+    if project then
+      M.targets(project)
+    else
+      notify.warn("Current file is not in any Nx project")
+    end
+  end)
+end
+
+--- Open picker showing only affected projects.
+function M.affected()
+  local root = workspace.root()
+  if not root then
+    notify.warn("No Nx workspace detected")
+    return
+  end
+
+  local ok, snacks = pcall(require, "snacks")
+  if not ok then
+    notify.error("snacks.nvim is required")
+    return
+  end
+
+  local cfg = config.get()
+  local icons = cfg.icons
+  local base = cfg.affected.base
+
+  local utils = require("nx.utils")
+  local cmd = workspace.nx_cmd({ "show", "projects", "--affected", "--base=" .. base, "--json" })
+
+  utils.exec(cmd, function(stdout)
+    local names = require("nx.projects").parse_project_list(stdout)
+    if #names == 0 then
+      notify.info("No affected projects")
+      return
+    end
+
+    local items = {}
+    for _, name in ipairs(names) do
+      table.insert(items, {
+        text = name,
+        project_name = name,
+      })
+    end
+    table.sort(items, function(a, b) return a.text < b.text end)
+
+    snacks.picker({
+      title = icons.nx .. " Affected Projects (base: " .. base .. ")",
+      items = items,
+      format = function(item, picker)
+        return {
+          { icons.lib .. " ", "Type" },
+          { item.project_name, "Function" },
+        }
+      end,
+      confirm = function(picker, item)
+        picker:close()
+        M.targets(item.project_name)
+      end,
+    })
+  end, function(err)
+    notify.error("Failed to get affected projects: " .. (err or "unknown"))
+  end)
+end
+
 return M

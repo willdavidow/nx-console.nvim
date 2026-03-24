@@ -95,10 +95,46 @@ function M.detail(name, callback)
   end)
 end
 
+--- Fetch all project details and build a name→root map.
+--- @param callback fun(map: table<string, {root: string, type: string}>)
+function M.root_map(callback)
+  if cache._root_map then
+    callback(cache._root_map)
+    return
+  end
+
+  M.list(function(names)
+    if #names == 0 then
+      callback({})
+      return
+    end
+
+    local map = {}
+    local pending = #names
+    for _, name in ipairs(names) do
+      M.detail(name, function(detail)
+        map[name] = { root = detail.root, type = detail.type }
+        pending = pending - 1
+        if pending == 0 then
+          cache._root_map = map
+          callback(map)
+        end
+      end)
+    end
+  end)
+end
+
+--- Expose the project details cache (read-only).
+--- @return table<string, table>|nil
+function M._get_cache()
+  return cache.project_details
+end
+
 --- Clear all cached data.
 function M.reset()
   cache.project_names = nil
   cache.project_details = {}
+  cache._root_map = nil
   cache.fetched_at = nil
 end
 
