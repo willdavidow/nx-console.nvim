@@ -81,4 +81,14 @@ function M.reset()
   state.nx_bin_path = nil
 end
 
+function M.is_nx_available()
+  if state.root then
+    local local_nx = state.root .. "/node_modules/.bin/nx"
+    if vim.fn.executable(local_nx) == 1 then
+      return true
+    end
+  end
+  return vim.fn.executable("npx") == 1
+end
+
 return M

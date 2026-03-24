@@ -108,6 +108,11 @@ function M.setup(opts)
     workspace.detect()
   end
 
+  -- Warn if nx CLI is not available
+  if cfg.workspace.auto_detect and workspace.root() and not workspace.is_nx_available() then
+    require("nx.notify").warn("Nx workspace found but nx CLI is not available. Install nx or ensure npx is on PATH.")
+  end
+
   -- Load run history
   require("nx.history").load()
 
