@@ -16,13 +16,29 @@ function M.parse_collections(json_str)
   for _, plugin in ipairs(plugins) do
     local gens = {}
     local caps = plugin.capabilities or {}
-    local gen_map = caps.generators or {}
-    for name, def in pairs(gen_map) do
-      table.insert(gens, {
-        name = name,
-        description = def.description or "",
-      })
+    local gen_data = caps.generators or {}
+
+    -- Handle both formats:
+    -- Array of strings: ["application", "library"] (real nx list --json)
+    -- Map of objects: { "application": { "description": "..." } } (some versions)
+    if #gen_data > 0 then
+      -- Array format
+      for _, name in ipairs(gen_data) do
+        if type(name) == "string" then
+          table.insert(gens, { name = name, description = "" })
+        end
+      end
+    else
+      -- Map format
+      for name, def in pairs(gen_data) do
+        local desc = ""
+        if type(def) == "table" then
+          desc = def.description or ""
+        end
+        table.insert(gens, { name = name, description = desc })
+      end
     end
+
     table.sort(gens, function(a, b) return a.name < b.name end)
     if #gens > 0 then
       table.insert(collections, {

@@ -86,6 +86,26 @@ t.describe("generators.parse_collections", function()
     local result = generators.parse_collections("not json")
     t.assert_eq(0, #result)
   end)
+
+  t.it("handles array-of-strings format from real nx list --json", function()
+    local real_format = [[{
+      "plugins": [
+        {
+          "name": "@nx/angular",
+          "version": "18.0.0",
+          "capabilities": {
+            "generators": ["application", "library", "component"],
+            "executors": ["build", "serve"]
+          }
+        }
+      ]
+    }]]
+    local result = generators.parse_collections(real_format)
+    t.assert_eq(1, #result)
+    t.assert_eq("@nx/angular", result[1].name)
+    t.assert_eq(3, #result[1].generators)
+    t.assert_eq("application", result[1].generators[1].name)
+  end)
 end)
 
 t.describe("generators.parse_schema", function()

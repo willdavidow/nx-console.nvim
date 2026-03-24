@@ -17,12 +17,15 @@ local function update_title()
   local icons = config.get().icons
   local total = #state.buffers
   local idx = state.active_idx
+  -- Build the title and escape % characters so statusline doesn't interpret them
   local title = " " .. icons.nx .. " " .. active_entry.label
   if total > 1 then
     title = title .. "  [" .. idx .. "/" .. total .. "]"
   end
   title = title .. "  " .. icons.running
-  vim.wo[state.win].statusline = title
+  -- Escape any % for statusline format, then pad right
+  local escaped = title:gsub("%%", "%%%%")
+  vim.wo[state.win].statusline = escaped .. "%="
 end
 
 function M.add_buffer(bufnr, label)
