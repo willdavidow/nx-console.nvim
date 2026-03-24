@@ -20,6 +20,30 @@ function M.setup(opts)
     require("nx.notify").info("Workspace cache refreshed")
   end, { desc = "Nx: refresh workspace cache" })
 
+  vim.api.nvim_create_user_command("NxExplorer", function()
+    require("nx.sidebar").toggle()
+  end, { desc = "Nx: toggle sidebar explorer" })
+
+  vim.api.nvim_create_user_command("NxHistory", function()
+    require("nx.history").picker()
+  end, { desc = "Nx: run history picker" })
+
+  vim.api.nvim_create_user_command("NxAffected", function()
+    require("nx.pickers").affected()
+  end, { desc = "Nx: affected projects picker" })
+
+  vim.api.nvim_create_user_command("NxCurrentProject", function()
+    require("nx.pickers").current_file()
+  end, { desc = "Nx: current file's project targets" })
+
+  vim.api.nvim_create_user_command("NxRerun", function()
+    require("nx.runner").rerun()
+  end, { desc = "Nx: re-run last command" })
+
+  vim.api.nvim_create_user_command("NxStop", function()
+    require("nx.runner").stop()
+  end, { desc = "Nx: stop running task(s)" })
+
   -- Register keymaps
   local keys = cfg.keys
   if keys.projects then
@@ -27,6 +51,24 @@ function M.setup(opts)
   end
   if keys.refresh then
     vim.keymap.set("n", keys.refresh, "<cmd>NxRefresh<cr>", { desc = "Nx: refresh" })
+  end
+  if keys.explorer then
+    vim.keymap.set("n", keys.explorer, "<cmd>NxExplorer<cr>", { desc = "Nx: explorer" })
+  end
+  if keys.history then
+    vim.keymap.set("n", keys.history, "<cmd>NxHistory<cr>", { desc = "Nx: history" })
+  end
+  if keys.affected then
+    vim.keymap.set("n", keys.affected, "<cmd>NxAffected<cr>", { desc = "Nx: affected" })
+  end
+  if keys.current then
+    vim.keymap.set("n", keys.current, "<cmd>NxCurrentProject<cr>", { desc = "Nx: current project" })
+  end
+  if keys.rerun then
+    vim.keymap.set("n", keys.rerun, "<cmd>NxRerun<cr>", { desc = "Nx: rerun last" })
+  end
+  if keys.stop then
+    vim.keymap.set("n", keys.stop, "<cmd>NxStop<cr>", { desc = "Nx: stop tasks" })
   end
 
   -- which-key integration
@@ -39,6 +81,17 @@ function M.setup(opts)
   if cfg.workspace.auto_detect then
     workspace.detect()
   end
+
+  -- Load run history
+  require("nx.history").load()
+
+  -- Save history on exit as a safety net
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = vim.api.nvim_create_augroup("NxHistorySave", { clear = true }),
+    callback = function()
+      require("nx.history").save()
+    end,
+  })
 end
 
 --- Return the workspace root, or nil.
