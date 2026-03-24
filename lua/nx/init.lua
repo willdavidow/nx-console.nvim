@@ -100,6 +100,9 @@ function M.setup(opts)
   -- Load run history
   require("nx.history").load()
 
+  -- Register dashboard section if Snacks.dashboard is available
+  require("nx.dashboard").register()
+
   -- Save history on exit as a safety net
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = vim.api.nvim_create_augroup("NxHistorySave", { clear = true }),
