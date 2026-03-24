@@ -13,6 +13,12 @@ local defaults = {
     notify_on_complete = true,
     long_running_targets = { "serve", "dev", "start", "watch" },
   },
+  panel = {
+    position = "bottom",
+    height = 15,
+    width = 80,
+    auto_show = true,
+  },
   explorer = {
     side = "left",
     width = 40,
