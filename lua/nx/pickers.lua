@@ -69,6 +69,28 @@ function M.targets(project_name)
   end)
 end
 
+--- Render project detail into the preview pane.
+local function render_project_preview(ctx, detail, icons)
+  ctx.preview:reset()
+  local root_dir = workspace.root()
+  local project_json = root_dir .. "/" .. detail.root .. "/project.json"
+  if vim.fn.filereadable(project_json) == 1 then
+    ctx.preview:set_buf(vim.fn.bufadd(project_json))
+  else
+    local lines = {
+      "Project: " .. detail.name,
+      "Root: " .. detail.root,
+      "Type: " .. detail.type,
+      "",
+      "Targets:",
+    }
+    for _, tgt in ipairs(detail.targets) do
+      table.insert(lines, "  " .. icons.target .. " " .. tgt.name .. "  (" .. tgt.executor .. ")")
+    end
+    ctx.preview:set_lines(lines)
+  end
+end
+
 --- Open the project picker.
 --- Shows project names immediately; fetches detail on demand for preview.
 function M.projects()
@@ -130,26 +152,8 @@ function M.projects()
         if not item._detail then
           projects.detail(item.project_name, function(detail)
             item._detail = detail
-            -- Refresh the preview if picker is still open
             if ctx.preview then
-              ctx.preview:reset()
-              local root_dir = workspace.root()
-              local project_json = root_dir .. "/" .. detail.root .. "/project.json"
-              if vim.fn.filereadable(project_json) == 1 then
-                ctx.preview:set_buf(vim.fn.bufadd(project_json))
-              else
-                local lines = {
-                  "Project: " .. detail.name,
-                  "Root: " .. detail.root,
-                  "Type: " .. detail.type,
-                  "",
-                  "Targets:",
-                }
-                for _, tgt in ipairs(detail.targets) do
-                  table.insert(lines, "  " .. icons.target .. " " .. tgt.name .. "  (" .. tgt.executor .. ")")
-                end
-                ctx.preview:set_lines(lines)
-              end
+              render_project_preview(ctx, detail, icons)
             end
           end)
           -- Show loading text while fetching
@@ -157,24 +161,7 @@ function M.projects()
           return
         end
 
-        local detail = item._detail
-        local root_dir = workspace.root()
-        local project_json = root_dir .. "/" .. detail.root .. "/project.json"
-        if vim.fn.filereadable(project_json) == 1 then
-          ctx.preview:set_buf(vim.fn.bufadd(project_json))
-        else
-          local lines = {
-            "Project: " .. detail.name,
-            "Root: " .. detail.root,
-            "Type: " .. detail.type,
-            "",
-            "Targets:",
-          }
-          for _, tgt in ipairs(detail.targets) do
-            table.insert(lines, "  " .. icons.target .. " " .. tgt.name .. "  (" .. tgt.executor .. ")")
-          end
-          ctx.preview:set_lines(lines)
-        end
+        render_project_preview(ctx, item._detail, icons)
       end,
       confirm = function(picker, item)
         picker:close()

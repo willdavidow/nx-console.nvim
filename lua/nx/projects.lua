@@ -52,6 +52,11 @@ end
 --- Fetch all project names asynchronously.
 --- @param callback fun(names: string[])
 function M.list(callback)
+  if cache.project_names then
+    callback(cache.project_names)
+    return
+  end
+
   local root = workspace.root()
   if not root then
     notify.warn("No Nx workspace detected")

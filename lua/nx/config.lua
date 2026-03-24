@@ -61,6 +61,10 @@ function M.get()
   return current or defaults
 end
 
+function M.is_setup()
+  return current ~= nil
+end
+
 function M.reset()
   current = nil
 end

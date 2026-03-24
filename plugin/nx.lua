@@ -8,9 +8,9 @@ vim.api.nvim_create_autocmd("BufEnter", {
     -- Skip special buffers (terminals, help, quickfix, etc.)
     if vim.bo.buftype ~= "" then return end
 
-    -- Only run if setup() has been called (config exists)
+    -- Only run if setup() has been called
     local ok, config = pcall(require, "nx.config")
-    if not ok then return end
+    if not ok or not config.is_setup() then return end
     local cfg = config.get()
     if not cfg.workspace.auto_detect then return end
 
