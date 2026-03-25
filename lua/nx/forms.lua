@@ -216,6 +216,21 @@ function M.open(title, fields, on_submit)
 
   popup:mount()
 
+  -- Force line numbers off persistently — some user configs re-enable them
+  -- on BufEnter/WinEnter. This autocmd overrides that.
+  local form_augroup = vim.api.nvim_create_augroup("NxFormOptions", { clear = true })
+  vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter", "BufWinEnter" }, {
+    group = form_augroup,
+    buffer = popup.bufnr,
+    callback = function()
+      if popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
+        vim.wo[popup.winid].number = false
+        vim.wo[popup.winid].relativenumber = false
+        vim.wo[popup.winid].signcolumn = "no"
+      end
+    end,
+  })
+
   local current_field = 1
   local value_positions = {}
 
@@ -223,6 +238,12 @@ function M.open(title, fields, on_submit)
     value_positions = render_form(popup, fields, current_field)
     -- Position cursor on current field line
     pcall(vim.api.nvim_win_set_cursor, popup.winid, { current_field, 2 })
+    -- Ensure options stay correct
+    if popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
+      vim.wo[popup.winid].number = false
+      vim.wo[popup.winid].relativenumber = false
+      vim.wo[popup.winid].signcolumn = "no"
+    end
   end
 
   local function goto_field(idx)
@@ -291,10 +312,12 @@ function M.open(title, fields, on_submit)
         text = { top = " " .. label .. " ", top_align = "left" },
       },
       win_options = {
-        winhighlight = "Normal:Normal,FloatBorder:Function",
+        winhighlight = "Normal:Normal,FloatBorder:Title,NormalFloat:Normal",
         number = false,
         relativenumber = false,
+        signcolumn = "no",
       },
+      zindex = 100,
     }, {
       prompt = " ",
       default_value = default_val or "",
