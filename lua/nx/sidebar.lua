@@ -9,7 +9,47 @@ local M = {}
 local state = {
   split = nil,
   tree = nil,
+  filter = "",
+  all_nodes = nil,  -- unfiltered nodes for search
 }
+
+--- Render the header (title + search bar) into the top of the buffer.
+--- Returns the line number where the tree should start rendering (1-indexed).
+local function render_header(bufnr, sidebar_width)
+  local icons = config.get().icons
+  local ns = vim.api.nvim_create_namespace("nx_sidebar_header")
+
+  -- Build title line: ──── Nx Explorer ────
+  local title_text = " Nx Explorer "
+  local rule_char = "─"
+  local avail = (sidebar_width or 40) - #title_text
+  local left_pad = math.floor(avail / 2)
+  local right_pad = avail - left_pad
+  local title_line = string.rep(rule_char, math.max(left_pad, 1)) .. title_text .. string.rep(rule_char, math.max(right_pad, 1))
+
+  -- Build search line
+  local search_line
+  if state.filter ~= "" then
+    search_line = "  " .. icons.nx .. " " .. state.filter
+  else
+    search_line = "  " .. icons.nx .. " / to search..."
+  end
+
+  vim.bo[bufnr].modifiable = true
+  vim.api.nvim_buf_set_lines(bufnr, 0, 2, false, { title_line, search_line })
+  vim.bo[bufnr].modifiable = false
+
+  -- Highlights
+  vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, 2)
+  vim.api.nvim_buf_add_highlight(bufnr, ns, "Title", 0, 0, -1)
+  if state.filter ~= "" then
+    vim.api.nvim_buf_add_highlight(bufnr, ns, "String", 1, 0, -1)
+  else
+    vim.api.nvim_buf_add_highlight(bufnr, ns, "NonText", 1, 0, -1)
+  end
+
+  return 3  -- tree starts at line 3 (1-indexed)
+end
 
 local function build_tree_nodes(project_names, callback)
   local NuiTree = require("nui.tree")
@@ -101,6 +141,9 @@ local function setup_tree(split)
   local NuiTree = require("nui.tree")
   local NuiLine = require("nui.line")
   local icons = config.get().icons
+  local sidebar_width = config.get().explorer.width
+
+  local tree_start = render_header(split.bufnr, sidebar_width)
 
   local tree = NuiTree({
     bufnr = split.bufnr,
@@ -132,7 +175,7 @@ local function setup_tree(split)
     },
   })
 
-  tree:render()
+  tree:render(tree_start)
   state.tree = tree
 
   projects.list(function(names)
@@ -140,16 +183,19 @@ local function setup_tree(split)
       tree:set_nodes({
         NuiTree.Node({ id = "_empty", text = " No projects found", type = "empty" }),
       })
-      tree:render()
+      render_header(split.bufnr, sidebar_width)
+      tree:render(tree_start)
       return
     end
 
     build_tree_nodes(names, function(nodes)
+      state.all_nodes = nodes
       tree:set_nodes(nodes)
       for _, node in ipairs(tree:get_nodes()) do
         node:expand()
       end
-      tree:render()
+      render_header(split.bufnr, sidebar_width)
+      tree:render(tree_start)
     end)
   end)
 
@@ -245,6 +291,88 @@ local function setup_keymaps(split, tree_fn)
   split:map("n", "q", function()
     M.close()
   end, { noremap = true, silent = true })
+
+  -- Search: / opens filter, <Esc> clears it
+  split:map("n", "/", function()
+    vim.ui.input({ prompt = "Filter: ", default = state.filter }, function(input)
+      if input ~= nil then
+        state.filter = input
+        M._apply_filter()
+      end
+      -- Refocus sidebar
+      if state.split and state.split.winid and vim.api.nvim_win_is_valid(state.split.winid) then
+        vim.api.nvim_set_current_win(state.split.winid)
+      end
+    end)
+  end, { noremap = true, silent = true })
+
+  split:map("n", "<Esc>", function()
+    if state.filter ~= "" then
+      state.filter = ""
+      M._apply_filter()
+    end
+  end, { noremap = true, silent = true })
+end
+
+--- Apply the current filter to the tree.
+function M._apply_filter()
+  if not state.split or not state.tree or not state.all_nodes then return end
+  local NuiTree = require("nui.tree")
+  local sidebar_width = config.get().explorer.width
+
+  if state.filter == "" then
+    -- Restore all nodes
+    state.tree:set_nodes(state.all_nodes)
+    for _, node in ipairs(state.tree:get_nodes()) do
+      node:expand()
+    end
+  else
+    -- Filter: keep groups that have matching projects/targets
+    local pattern = state.filter:lower()
+    local filtered = {}
+    for _, group_node in ipairs(state.all_nodes) do
+      -- Check children (projects) for matches
+      local matching_children = {}
+      for _, child_id in ipairs(group_node:get_child_ids()) do
+        local child = nil
+        -- Find the child node in the original tree
+        for _, gn in ipairs(state.all_nodes) do
+          -- We need to rebuild — NuiTree nodes from all_nodes
+          -- Just do a simple text match on the node data
+        end
+      end
+    end
+
+    -- Simpler approach: rebuild filtered nodes
+    local projects_mod = require("nx.projects")
+    projects_mod.list(function(names)
+      local filtered_names = {}
+      for _, name in ipairs(names) do
+        if name:lower():find(pattern, 1, true) then
+          table.insert(filtered_names, name)
+        end
+      end
+      if #filtered_names > 0 then
+        build_tree_nodes(filtered_names, function(nodes)
+          state.tree:set_nodes(nodes)
+          for _, node in ipairs(state.tree:get_nodes()) do
+            node:expand()
+          end
+          render_header(state.split.bufnr, sidebar_width)
+          state.tree:render(3)
+        end)
+      else
+        state.tree:set_nodes({
+          NuiTree.Node({ id = "_no_match", text = " No matches", type = "empty" }),
+        })
+        render_header(state.split.bufnr, sidebar_width)
+        state.tree:render(3)
+      end
+    end)
+  end
+
+  render_header(state.split.bufnr, sidebar_width)
+  state.tree:render(3)
 end
 
 --- Refresh the sidebar tree, preserving expand/collapse state.
@@ -285,7 +413,10 @@ function M.refresh()
         end
       end
       restore_expanded(nil)
-      state.tree:render()
+      state.all_nodes = nodes
+      local sidebar_width = config.get().explorer.width
+      render_header(state.split.bufnr, sidebar_width)
+      state.tree:render(3)
     end)
   end)
 end
@@ -334,10 +465,7 @@ function M.open()
 
   split:mount()
   state.split = split
-
-  -- Set sidebar title via winbar
-  local icons = config.get().icons
-  vim.wo[split.winid].winbar = " " .. icons.nx .. " Nx Explorer"
+  state.filter = ""
 
   local tree = setup_tree(split)
   setup_keymaps(split, function() return state.tree end)
