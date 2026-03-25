@@ -10,11 +10,19 @@ local M = {}
 --- @return string[] plugin names
 function M.parse_plugin_names(text)
   local names = {}
+  local in_available = false
   for line in text:gmatch("[^\r\n]+") do
-    -- Lines like: "  @nx/react (executors,generators)" or "  my-plugin (generators)"
-    local name, caps = line:match("^%s+(%S+)%s+%((.-)%)")
-    if name and caps and caps:find("generators") then
-      table.insert(names, name)
+    -- Stop collecting when we hit "Also available" (not-installed plugins)
+    if line:find("Also available") then
+      in_available = true
+    end
+    if not in_available then
+      -- Lines like: "@nx/eslint (executors,generators)" or "@magnus/plugin (generators)"
+      -- Real nx output has no leading whitespace, but be flexible
+      local name, caps = line:match("^%s*(%S+)%s+%((.-)%)")
+      if name and caps and caps:find("generators") then
+        table.insert(names, name)
+      end
     end
   end
   return names
@@ -31,12 +39,13 @@ function M.parse_plugin_generators(text, plugin_name)
     -- Detect the GENERATORS section header
     if line:match("^%s*GENERATORS") then
       in_generators = true
-    elseif line:match("^%s*EXECUTORS") then
+    elseif line:match("^%s*EXECUTORS") or line:match("^%s*BUILDERS") then
       in_generators = false
     elseif in_generators then
       -- Lines like: "  component : Create a React component"
       -- or:         "  application : Create an application"
-      local name, desc = line:match("^%s+(%S+)%s+:%s+(.*)")
+      -- Flexible: "component : desc" or "  component : desc"
+      local name, desc = line:match("^%s*(%S+)%s+:%s+(.*)")
       if name then
         table.insert(gens, {
           name = name,

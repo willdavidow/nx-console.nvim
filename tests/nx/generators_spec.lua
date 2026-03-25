@@ -1,50 +1,54 @@
 local t = require("tests.test_helper")
 local generators = require("nx.generators")
 
--- Sample `nx list` text output
+-- Sample `nx list` text output (matches real nx CLI output format)
 local sample_nx_list_text = [[
+ NX   Local workspace plugins:
 
->  NX   Local workspace plugins:
+my-plugin (generators)
 
-   my-plugin (generators)
 
->  NX   Installed plugins:
+ NX   Installed plugins:
 
-   @nx/react (executors,generators)
-   @nx/node (executors,generators)
-   @nx/eslint (executors)
-   @nx/jest (executors)
+@nx/react (executors,generators)
+@nx/node (executors,generators)
+@nx/eslint (executors)
+@nx/jest (executors)
+
+
+ NX   Also available:
+
+@nx/angular (executors,generators)
+@nx/cypress (executors,generators)
 
 ]]
 
--- Sample `nx list @nx/react` text output
+-- Sample `nx list @nx/react` text output (matches real nx CLI output format)
 local sample_plugin_detail = [[
+ NX   Capabilities in @nx/react:
 
->  NX   Capabilities in @nx/react:
+GENERATORS
 
-  GENERATORS
+application : Create a React application
+component : Create a React component
+library : Create a React library
+hook : Create a React hook
 
-  application : Create a React application
-  component : Create a React component
-  library : Create a React library
-  hook : Create a React hook
+EXECUTORS/BUILDERS
 
-  EXECUTORS
-
-  build : Build a React application
-  serve : Serve a React application
+build : Build a React application
+serve : Serve a React application
 
 ]]
 
 -- Sample `nx list my-plugin` text output (local plugin)
 local sample_local_plugin_detail = [[
+ NX   Capabilities in my-plugin:
 
->  NX   Capabilities in my-plugin:
+GENERATORS
 
-  GENERATORS
-
-  my-generator : Generate a custom thing
-  util-lib : Create a utility library
+my-generator : Generate a custom thing
+util-lib : Create a utility library
 
 ]]
 
@@ -116,11 +120,13 @@ t.describe("generators.parse_plugin_names", function()
     t.assert_eq("@nx/node", names[3])
   end)
 
-  t.it("excludes plugins without generators", function()
+  t.it("excludes plugins without generators and uninstalled plugins", function()
     local names = generators.parse_plugin_names(sample_nx_list_text)
     for _, name in ipairs(names) do
-      t.assert_true(name ~= "@nx/eslint", "should not include @nx/eslint")
-      t.assert_true(name ~= "@nx/jest", "should not include @nx/jest")
+      t.assert_true(name ~= "@nx/eslint", "should not include @nx/eslint (no generators)")
+      t.assert_true(name ~= "@nx/jest", "should not include @nx/jest (no generators)")
+      t.assert_true(name ~= "@nx/angular", "should not include @nx/angular (not installed)")
+      t.assert_true(name ~= "@nx/cypress", "should not include @nx/cypress (not installed)")
     end
   end)
 end)
