@@ -258,22 +258,24 @@ function M.open(title, fields, on_submit)
     return tags
   end
 
-  --- Open a nui Input popup at the value column with a full rounded border.
+  --- Open a nui Input popup just below the current field with a full border.
   local function open_input(label, default_val, callback)
     local Input = require("nui.input")
     local pos = value_positions[current_field] or { row = 0, col = 0 }
-    local input_width = math.max(width - pos.col - 2, 20)
 
+    -- Position below the current field line, indented to the value column.
+    -- row is relative to the form window: pos.row is 0-indexed line of the field,
+    -- +1 puts it just below that line.
     local input_popup = Input({
       position = {
-        row = pos.row,
+        row = pos.row + 1,
         col = pos.col,
       },
       relative = {
         type = "win",
         winid = popup.winid,
       },
-      size = { width = input_width },
+      size = { width = math.max(width - pos.col - 2, 20) },
       border = {
         style = "rounded",
         text = { top = " " .. label .. " ", top_align = "left" },
