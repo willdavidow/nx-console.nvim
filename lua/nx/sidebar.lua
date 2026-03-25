@@ -8,6 +8,7 @@ local M = {}
 
 local state = {
   picker = nil,
+  collapsed = {},  -- set of item IDs that are collapsed
 }
 
 --- Build a flat list of picker items with parent references for tree rendering.
@@ -47,18 +48,27 @@ local function build_items(callback)
           local function add_group(group_name, group_icon, group_projects, is_last_group)
             if #group_projects == 0 then return end
             idx = idx + 1
+            local group_id = "_group_" .. group_name
+            local is_collapsed = state.collapsed[group_id]
+            local collapse_icon = is_collapsed and " " or " "
             local group_item = {
               idx = idx,
-              text = group_icon .. " " .. group_name,
+              text = collapse_icon .. group_icon .. " " .. group_name,
               item_type = "group",
               group_name = group_name,
+              node_id = group_id,
               last = is_last_group,
             }
             table.insert(items, group_item)
 
+            -- Skip children if group is collapsed
+            if is_collapsed then return end
+
             for pi_idx, detail in ipairs(group_projects) do
               idx = idx + 1
               local is_last_project = (pi_idx == #group_projects)
+              local project_id = detail.name
+              local proj_collapsed = state.collapsed[project_id]
               local has_running = false
               for _, tgt in ipairs(detail.targets) do
                 if runner.is_running(detail.name, tgt.name) then
@@ -68,7 +78,8 @@ local function build_items(callback)
               end
 
               local pi = detail.type == "application" and icons.app or icons.lib
-              local project_text = pi .. " " .. detail.name
+              local collapse_pi = proj_collapsed and " " or " "
+              local project_text = collapse_pi .. pi .. " " .. detail.name
               if has_running then
                 project_text = project_text .. " " .. icons.running
               end
@@ -80,10 +91,14 @@ local function build_items(callback)
                 project_name = detail.name,
                 project_root = detail.root,
                 has_running = has_running,
+                node_id = project_id,
                 parent = group_item,
                 last = is_last_project,
               }
               table.insert(items, project_item)
+
+              -- Skip children if project is collapsed
+              if proj_collapsed then goto continue end
 
               for tgt_idx, tgt in ipairs(detail.targets) do
                 idx = idx + 1
@@ -102,6 +117,8 @@ local function build_items(callback)
                   last = is_last_target,
                 })
               end
+
+              ::continue::
             end
           end
 
@@ -145,6 +162,7 @@ function M.open()
     state.picker = snacks.picker({
       title = "Nx Explorer",
       items = items,
+      focus = "list",  -- start in normal mode navigating the tree
       layout = {
         preset = "sidebar",
         preview = false,
@@ -179,11 +197,19 @@ function M.open()
         if not item then return end
         if item.item_type == "target" then
           runner.run(item.project_name, item.target_name)
-        elseif item.item_type == "project" then
-          -- Toggle expand in tree
-          picker:action("toggle")
-        elseif item.item_type == "group" then
-          picker:action("toggle")
+        elseif item.node_id then
+          -- Toggle collapse for groups and projects
+          if state.collapsed[item.node_id] then
+            state.collapsed[item.node_id] = nil
+          else
+            state.collapsed[item.node_id] = true
+          end
+          -- Rebuild items with new collapse state
+          build_items(function(new_items)
+            if state.picker and not state.picker.closed then
+              state.picker:set_items(new_items)
+            end
+          end)
         end
       end,
       actions = {
@@ -230,6 +256,24 @@ function M.open()
             picker:set_items(new_items)
           end)
         end,
+        collapse_node = function(picker, item)
+          if not item or not item.node_id then return end
+          state.collapsed[item.node_id] = true
+          build_items(function(new_items)
+            if state.picker and not state.picker.closed then
+              state.picker:set_items(new_items)
+            end
+          end)
+        end,
+        expand_node = function(picker, item)
+          if not item or not item.node_id then return end
+          state.collapsed[item.node_id] = nil
+          build_items(function(new_items)
+            if state.picker and not state.picker.closed then
+              state.picker:set_items(new_items)
+            end
+          end)
+        end,
       },
       win = {
         input = {
@@ -246,6 +290,8 @@ function M.open()
             ["gd"] = { "goto_root", desc = "Go to project root" },
             ["gp"] = { "open_project_json", desc = "Open project.json" },
             ["r"] = { "refresh_tree", desc = "Refresh" },
+            ["h"] = { "collapse_node", desc = "Collapse" },
+            ["l"] = { "expand_node", desc = "Expand" },
           },
         },
       },
