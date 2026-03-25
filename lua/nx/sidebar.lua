@@ -372,11 +372,26 @@ function M.toggle()
 end
 
 --- Lightweight refresh: re-run the finder with current collapse state.
---- No async rebuild needed — just updates the view.
+--- No async rebuild needed — just updates the view. Preserves cursor.
 function M._refresh_view()
   if not state.picker or state.picker.closed then return end
+  -- Remember which item we're on by node_id or text
+  local current = state.picker:current()
+  local current_id = current and (current.node_id or current.text)
+
   state.picker.finder.filter = nil
-  state.picker:find()
+  state.picker:find({
+    on_done = function()
+      if not current_id or not state.picker or state.picker.closed then return end
+      -- Find the item with the same id in the new list and move cursor there
+      for item, idx in state.picker:iter() do
+        if (item.node_id or item.text) == current_id then
+          state.picker.list:view(idx)
+          return
+        end
+      end
+    end,
+  })
 end
 
 --- Full rebuild: re-fetch items from nx CLI and update the picker.
