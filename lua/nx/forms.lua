@@ -220,24 +220,39 @@ function M.open(title, fields, on_submit)
     refresh()
   end
 
+  --- Refocus the form after an input/select completes or is cancelled.
+  local function refocus()
+    vim.schedule(function()
+      if popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
+        vim.api.nvim_set_current_win(popup.winid)
+        refresh()
+      end
+    end)
+  end
+
   local function edit_field()
     local f = fields[current_field]
     if not f then return end
 
     if f.type == "boolean" then
-      -- Toggle inline
+      -- Toggle inline — no popup needed
       f.value = not f.value
       refresh()
 
     elseif f.type == "enum" and f.options then
-      -- Cycle through options inline
-      local cur = 1
-      for j, opt in ipairs(f.options) do
-        if opt == f.value then cur = j end
-      end
-      cur = (cur % #f.options) + 1
-      f.value = f.options[cur]
-      refresh()
+      -- Dropdown picker for enum values
+      vim.ui.select(f.options, {
+        prompt = f.name .. ":",
+        format_item = function(item)
+          local marker = item == f.value and "● " or "  "
+          return marker .. item
+        end,
+      }, function(choice)
+        if choice then
+          f.value = choice
+        end
+        refocus()
+      end)
 
     elseif f.type == "array" then
       local current_val = type(f.value) == "table" and table.concat(f.value, ", ") or ""
@@ -248,8 +263,8 @@ function M.open(title, fields, on_submit)
             table.insert(items, vim.trim(item))
           end
           f.value = items
-          refresh()
         end
+        refocus()
       end)
 
     elseif f.type == "number" then
@@ -258,11 +273,11 @@ function M.open(title, fields, on_submit)
           local num = tonumber(input)
           if num then
             f.value = num
-            refresh()
           else
             notify.warn("'" .. input .. "' is not a valid number")
           end
         end
+        refocus()
       end)
 
     else
@@ -270,8 +285,8 @@ function M.open(title, fields, on_submit)
       vim.ui.input({ prompt = f.name .. ": ", default = tostring(f.value or "") }, function(input)
         if input ~= nil then
           f.value = input
-          refresh()
         end
+        refocus()
       end)
     end
   end
