@@ -177,25 +177,51 @@ function M.open()
 
     state.picker = snacks.picker({
       title = "Nx Explorer",
-      -- live = true makes the finder re-run on every keystroke,
-      -- with ctx.filter.search containing the typed text.
+      -- live mode: finder re-runs on every keystroke with search text
       live = true,
       finder = function(opts, ctx)
-        local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
-        if searching then
-          return state.all_items
+        local search = ctx.filter and ctx.filter.search or ""
+        search = vim.trim(search):lower()
+
+        if search == "" then
+          -- Browse mode: return only visible (non-collapsed) items
+          local visible = {}
+          for _, item in ipairs(state.all_items) do
+            if not item.collapsed_parent then
+              table.insert(visible, item)
+            end
+          end
+          return visible
         end
-        -- Filter out collapsed children for browse mode
-        local visible = {}
+
+        -- Search mode: return items matching the search, plus their parents
+        local matched = {}
+        local needed_parents = {}
+
+        -- First pass: find matching items
         for _, item in ipairs(state.all_items) do
-          if not item.collapsed_parent then
-            table.insert(visible, item)
+          if item.text and item.text:lower():find(search, 1, true) then
+            matched[item] = true
+            -- Walk up parent chain to include ancestors
+            local p = item.parent
+            while p do
+              needed_parents[p] = true
+              p = p.parent
+            end
           end
         end
-        return visible
+
+        -- Second pass: collect matched items + their ancestors, in order
+        local result = {}
+        for _, item in ipairs(state.all_items) do
+          if matched[item] or needed_parents[item] then
+            table.insert(result, item)
+          end
+        end
+
+        return result
       end,
       focus = "list",
-      matcher = { keep_parents = true },
       -- Sort by original idx to keep tree order (parents before children)
       sort = { fields = { "idx" } },
       layout = {
