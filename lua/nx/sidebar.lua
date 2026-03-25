@@ -142,19 +142,7 @@ local function build_items(callback)
           add_group("apps", icons.app, apps, not has_libs)
           add_group("libs", icons.lib, libs, true)
 
-          -- Build two lists: all items (for search), visible items (for browse)
-          local visible = {}
-          for _, item in ipairs(items) do
-            if not item.collapsed_parent then
-              table.insert(visible, vim.tbl_extend("force", {}, item))
-            end
-          end
-          -- Re-index visible items
-          for i, item in ipairs(visible) do
-            item.idx = i
-          end
-
-          callback(items, visible)
+          callback(items)
         end
       end)
     end
@@ -179,26 +167,33 @@ function M.open()
 
   notify.info("Loading projects...")
 
-  build_items(function(all_items, visible_items)
+  build_items(function(all_items)
     if #all_items == 0 then
       notify.warn("No projects found")
       return
     end
 
-    -- Store both sets for the finder to switch between
     state.all_items = all_items
-    state.visible_items = visible_items
 
     state.picker = snacks.picker({
       title = "Nx Explorer",
-      -- Use a finder function that returns visible items for browsing,
-      -- all items for searching. This gives correct counts for both modes.
-      finder = function(opts, ctx)
-        local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
-        return searching and state.all_items or state.visible_items
-      end,
+      items = all_items,
       focus = "list",
       matcher = { keep_parents = true },
+      -- When browsing (empty search), hide collapsed children.
+      -- When searching, show everything so all items are findable.
+      transform = function(item, ctx)
+        local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
+        if searching then
+          return item
+        end
+        if item.collapsed_parent then
+          return false
+        end
+        return item
+      end,
+      -- Sort by original idx to keep tree order (parents before children)
+      sort = { fields = { "idx" } },
       layout = {
         preset = "sidebar",
         preview = false,
@@ -348,24 +343,21 @@ function M._update_items()
     cursor_idx = current.idx
   end
 
-  build_items(function(all_items, visible_items)
+  build_items(function(all_items)
     if not state.picker or state.picker.closed then return end
-    -- Update stored item sets
     state.all_items = all_items
-    state.visible_items = visible_items
-    -- Replace the finder and force re-run
-    state.picker.finder._find = function(opts, ctx)
-      local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
-      return searching and state.all_items or state.visible_items
+    -- Replace finder to return new items
+    state.picker.finder._find = function()
+      return all_items
     end
     state.picker.finder.filter = nil
     state.picker:find()
 
-    -- Restore cursor position (schedule to let render finish)
+    -- Restore cursor position
     if cursor_idx then
       vim.schedule(function()
         if state.picker and not state.picker.closed and state.picker.list then
-          local target = math.min(cursor_idx, #visible_items)
+          local target = math.min(cursor_idx, #all_items)
           if target > 0 then
             state.picker.list:view(target)
           end
