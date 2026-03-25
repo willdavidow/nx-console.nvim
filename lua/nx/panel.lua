@@ -9,29 +9,21 @@ local state = {
   win = nil,
 }
 
---- Build the title string for the panel border.
-local function build_title()
+--- Update the panel winbar (renders at the top of the window as a title bar).
+local function update_title()
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
   local active_entry = state.buffers[state.active_idx]
-  if not active_entry then return " NX Panel " end
+  if not active_entry then return end
   local icons = config.get().icons
   local total = #state.buffers
   local idx = state.active_idx
   local title = " " .. icons.nx .. " " .. active_entry.label
   if total > 1 then
-    title = title .. "  [" .. idx .. "/" .. total .. "]"
+    title = title .. "  [" .. idx .. "/" .. total .. "]  ]t/[t switch"
   end
-  title = title .. " " .. icons.running .. " "
-  return title
-end
-
---- Update the panel window border title.
-local function update_title()
-  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
-  local title = build_title()
-  vim.api.nvim_win_set_config(state.win, {
-    title = { { title, "FloatTitle" } },
-    title_pos = "center",
-  })
+  title = title .. "  " .. icons.running
+  local escaped = title:gsub("%%", "%%%%")
+  vim.wo[state.win].winbar = escaped .. "%="
 end
 
 function M.add_buffer(bufnr, label)
@@ -141,28 +133,20 @@ function M.show()
   local active = M.get_active()
   if not active then return end
 
-  local title = build_title()
+  if cfg.position == "bottom" then
+    vim.cmd("botright " .. cfg.height .. "split")
+  else
+    vim.cmd("botright " .. cfg.width .. "vsplit")
+  end
 
-  -- Use nvim_open_win with split for a bordered panel
-  -- Top-only border gives a clean separator line with title
-  local win_config = {
-    split = cfg.position == "bottom" and "below" or "right",
-    height = cfg.position == "bottom" and cfg.height or nil,
-    width = cfg.position ~= "bottom" and cfg.width or nil,
-    win = 0,
-    border = { "─", "─", "─", "", "", "", "", "" },
-    title = { { title, "FloatTitle" } },
-    title_pos = "center",
-  }
-
-  state.win = vim.api.nvim_open_win(active.buf, true, win_config)
+  state.win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(state.win, active.buf)
 
   vim.wo[state.win].number = false
   vim.wo[state.win].relativenumber = false
   vim.wo[state.win].signcolumn = "no"
   vim.wo[state.win].winfixheight = true
   vim.wo[state.win].winfixwidth = true
-  vim.wo[state.win].statusline = " "
 
   M._apply_keymaps()
 
@@ -173,6 +157,8 @@ function M.show()
       state.win = nil
     end,
   })
+
+  update_title()
 end
 
 function M.hide()
