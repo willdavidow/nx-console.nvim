@@ -72,12 +72,10 @@ local function build_items(callback)
               item_type = "group",
               group_name = group_name,
               node_id = group_id,
+              collapsed_parent = nil,  -- top-level, never hidden
               last = is_last_group,
             }
             table.insert(items, group_item)
-
-            -- Skip children if group is collapsed
-            if is_collapsed then return end
 
             for pi_idx, detail in ipairs(group_projects) do
               idx = idx + 1
@@ -107,19 +105,20 @@ local function build_items(callback)
                 project_root = detail.root,
                 has_running = has_running,
                 node_id = project_id,
+                -- Mark as hidden if parent group is collapsed
+                collapsed_parent = is_collapsed and group_id or nil,
                 parent = group_item,
                 last = is_last_project,
               }
               table.insert(items, project_item)
-
-              -- Skip children if project is collapsed
-              if proj_collapsed then goto continue end
 
               for tgt_idx, tgt in ipairs(detail.targets) do
                 idx = idx + 1
                 local is_last_target = (tgt_idx == #detail.targets)
                 local is_running = runner.is_running(detail.name, tgt.name)
                 local tgt_icon = is_running and icons.running or icons.target
+                -- Hidden if either parent group or parent project is collapsed
+                local hidden_by = is_collapsed and group_id or (proj_collapsed and project_id or nil)
                 table.insert(items, {
                   idx = idx,
                   text = tgt_icon .. " " .. tgt.name,
@@ -128,12 +127,11 @@ local function build_items(callback)
                   target_name = tgt.name,
                   executor = tgt.executor or "",
                   is_running = is_running,
+                  collapsed_parent = hidden_by,
                   parent = project_item,
                   last = is_last_target,
                 })
               end
-
-              ::continue::
             end
           end
 
@@ -179,6 +177,16 @@ function M.open()
       items = items,
       focus = "list",  -- start in normal mode navigating the tree
       matcher = { keep_parents = true },  -- preserve tree context when filtering
+      -- Hide collapsed children when not searching; show all when searching
+      transform = function(item, ctx)
+        if ctx.filter and ctx.filter.search and ctx.filter.search ~= "" then
+          return item  -- searching: show everything
+        end
+        if item.collapsed_parent then
+          return false  -- browsing: hide children of collapsed nodes
+        end
+        return item
+      end,
       layout = {
         preset = "sidebar",
         preview = false,
