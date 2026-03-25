@@ -326,6 +326,9 @@ function M.kill_active()
   local bufnr = active.buf
   local label = active.label
 
+  -- Mark as user-killed so runner suppresses the failure notification
+  require("nx.runner").mark_killed(bufnr)
+
   -- Kill the process
   if vim.api.nvim_buf_is_valid(bufnr) then
     local chan = vim.bo[bufnr].channel

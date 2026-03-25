@@ -6,6 +6,7 @@ local history = require("nx.history")
 local M = {}
 
 local running_tasks = {}
+local user_killed = {} -- bufnr set: suppresses failure notification for user-initiated kills
 
 --- Notify sidebar and other listeners that task state changed.
 local function fire_task_changed()
@@ -66,7 +67,12 @@ function M.run(project, target, extra_args)
 
             local elapsed = (vim.uv.now() - start_time) / 1000
             local duration = string.format("%.1fs", elapsed)
-            if exit_code == 0 then
+            local was_killed = user_killed[bufnr]
+            user_killed[bufnr] = nil
+
+            if was_killed then
+              -- User killed via <C-c> in panel — no notification needed
+            elseif exit_code == 0 then
               notify.info(icons.success .. " " .. label .. " completed in " .. duration)
             else
               notify.error(icons.failure .. " " .. label .. " failed (exit " .. exit_code .. ") in " .. duration)
@@ -77,7 +83,7 @@ function M.run(project, target, extra_args)
               target = target,
               cmd = cmd,
               args = extra_args,
-              exit_code = exit_code,
+              exit_code = was_killed and -1 or exit_code,
               duration = elapsed,
             }
             history.add(hist_entry)
@@ -193,6 +199,12 @@ end
 
 function M.running_count()
   return #running_tasks
+end
+
+--- Mark a buffer as user-killed to suppress failure notifications.
+--- @param bufnr number
+function M.mark_killed(bufnr)
+  user_killed[bufnr] = true
 end
 
 --- Check if a specific project:target is currently running.
