@@ -171,6 +171,16 @@ function M.show()
   vim.wo[state.header_win].statusline = " "
   vim.api.nvim_win_set_height(state.header_win, 1)
 
+  -- Make header non-focusable: bounce focus to terminal window
+  vim.api.nvim_create_autocmd("WinEnter", {
+    buffer = state.header_buf,
+    callback = function()
+      if state.win and vim.api.nvim_win_is_valid(state.win) then
+        vim.api.nvim_set_current_win(state.win)
+      end
+    end,
+  })
+
   -- Open terminal split below the header
   vim.cmd("belowright " .. (total_height and total_height - 1 or "") .. "split")
   state.win = vim.api.nvim_get_current_win()
