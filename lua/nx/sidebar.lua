@@ -11,13 +11,14 @@ local state = {
   collapsed = nil,  -- set of item IDs that are collapsed (nil = not initialized yet)
 }
 
---- Ensure collapsed state is initialized (everything collapsed by default).
+--- Ensure collapsed state is initialized.
+--- Groups start expanded (showing projects), projects start collapsed (hiding targets).
 --- @param project_details table[]
 local function init_collapsed(project_details)
   if state.collapsed then return end
   state.collapsed = {}
-  state.collapsed["_group_apps"] = true
-  state.collapsed["_group_libs"] = true
+  -- Groups expanded (not in collapsed set)
+  -- Projects collapsed (in collapsed set) — hides their targets
   for _, d in ipairs(project_details) do
     state.collapsed[d.name] = true
   end
@@ -141,7 +142,19 @@ local function build_items(callback)
           add_group("apps", icons.app, apps, not has_libs)
           add_group("libs", icons.lib, libs, true)
 
-          callback(items)
+          -- Build two lists: all items (for search), visible items (for browse)
+          local visible = {}
+          for _, item in ipairs(items) do
+            if not item.collapsed_parent then
+              table.insert(visible, vim.tbl_extend("force", {}, item))
+            end
+          end
+          -- Re-index visible items
+          for i, item in ipairs(visible) do
+            item.idx = i
+          end
+
+          callback(items, visible)
         end
       end)
     end
@@ -166,27 +179,26 @@ function M.open()
 
   notify.info("Loading projects...")
 
-  build_items(function(items)
-    if #items == 0 then
+  build_items(function(all_items, visible_items)
+    if #all_items == 0 then
       notify.warn("No projects found")
       return
     end
 
+    -- Store both sets for the finder to switch between
+    state.all_items = all_items
+    state.visible_items = visible_items
+
     state.picker = snacks.picker({
       title = "Nx Explorer",
-      items = items,
-      focus = "list",  -- start in normal mode navigating the tree
-      matcher = { keep_parents = true },  -- preserve tree context when filtering
-      -- Hide collapsed children when not searching; show all when searching
-      transform = function(item, ctx)
-        if ctx.filter and ctx.filter.search and ctx.filter.search ~= "" then
-          return item  -- searching: show everything
-        end
-        if item.collapsed_parent then
-          return false  -- browsing: hide children of collapsed nodes
-        end
-        return item
+      -- Use a finder function that returns visible items for browsing,
+      -- all items for searching. This gives correct counts for both modes.
+      finder = function(opts, ctx)
+        local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
+        return searching and state.all_items or state.visible_items
       end,
+      focus = "list",
+      matcher = { keep_parents = true },
       layout = {
         preset = "sidebar",
         preview = false,
@@ -336,13 +348,16 @@ function M._update_items()
     cursor_idx = current.idx
   end
 
-  build_items(function(new_items)
+  build_items(function(all_items, visible_items)
     if not state.picker or state.picker.closed then return end
-    -- Replace the finder function to return new items
-    state.picker.finder._find = function()
-      return new_items
+    -- Update stored item sets
+    state.all_items = all_items
+    state.visible_items = visible_items
+    -- Replace the finder and force re-run
+    state.picker.finder._find = function(opts, ctx)
+      local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
+      return searching and state.all_items or state.visible_items
     end
-    -- Force the finder to think it needs to re-run
     state.picker.finder.filter = nil
     state.picker:find()
 
@@ -350,8 +365,7 @@ function M._update_items()
     if cursor_idx then
       vim.schedule(function()
         if state.picker and not state.picker.closed and state.picker.list then
-          -- Try to stay on the same index, clamped to new item count
-          local target = math.min(cursor_idx, #new_items)
+          local target = math.min(cursor_idx, #visible_items)
           if target > 0 then
             state.picker.list:view(target)
           end
