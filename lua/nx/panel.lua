@@ -6,12 +6,14 @@ local M = {}
 local state = {
   buffers = {},
   active_idx = 0,
-  win = nil,
+  header_buf = nil,   -- 1-line buffer for the title bar
+  header_win = nil,   -- window showing the title bar
+  win = nil,          -- window showing the terminal content
 }
 
---- Update the panel winbar (renders at the top of the window as a title bar).
-local function update_title()
-  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+--- Render the title text into the header buffer.
+local function render_header()
+  if not state.header_buf or not vim.api.nvim_buf_is_valid(state.header_buf) then return end
   local active_entry = state.buffers[state.active_idx]
   if not active_entry then return end
   local icons = config.get().icons
@@ -19,11 +21,17 @@ local function update_title()
   local idx = state.active_idx
   local title = " " .. icons.nx .. " " .. active_entry.label
   if total > 1 then
-    title = title .. "  [" .. idx .. "/" .. total .. "]  ]t/[t switch"
+    title = title .. "  [" .. idx .. "/" .. total .. "]  ]t/[t switch  <C-c> kill"
   end
   title = title .. "  " .. icons.running
-  local escaped = title:gsub("%%", "%%%%")
-  vim.wo[state.win].winbar = escaped .. "%="
+
+  vim.bo[state.header_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(state.header_buf, 0, -1, false, { title })
+  vim.bo[state.header_buf].modifiable = false
+
+  -- Apply highlight to the entire line
+  vim.api.nvim_buf_clear_namespace(state.header_buf, -1, 0, -1)
+  vim.api.nvim_buf_add_highlight(state.header_buf, -1, "StatusLine", 0, 0, -1)
 end
 
 function M.add_buffer(bufnr, label)
@@ -36,7 +44,7 @@ function M.add_buffer(bufnr, label)
     vim.keymap.set("n", "q", function() M.hide() end, map_opts)
     vim.keymap.set({ "n", "t" }, "<C-c>", function() M.kill_active() end, map_opts)
   end
-  update_title()
+  render_header()
 end
 
 function M.remove_buffer(bufnr)
@@ -53,6 +61,7 @@ function M.remove_buffer(bufnr)
     local active = M.get_active()
     if active then
       vim.api.nvim_win_set_buf(state.win, active.buf)
+      render_header()
     elseif #state.buffers == 0 then
       M.hide()
     end
@@ -80,7 +89,7 @@ function M.select_buffer(bufnr)
       break
     end
   end
-  update_title()
+  render_header()
 end
 
 function M.next_buffer()
@@ -90,7 +99,7 @@ function M.next_buffer()
   if active and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
-  update_title()
+  render_header()
 end
 
 function M.prev_buffer()
@@ -103,7 +112,7 @@ function M.prev_buffer()
   if active and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
-  update_title()
+  render_header()
 end
 
 function M._apply_keymaps()
@@ -133,39 +142,75 @@ function M.show()
   local active = M.get_active()
   if not active then return end
 
+  -- Create a 1-line header buffer for the title bar
+  state.header_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[state.header_buf].bufhidden = "wipe"
+  vim.bo[state.header_buf].buflisted = false
+  vim.bo[state.header_buf].buftype = "nofile"
+  vim.bo[state.header_buf].modifiable = false
+
+  -- Open the main split (header + terminal together)
+  -- Total height = config height; header takes 1 line
+  local total_height = cfg.position == "bottom" and cfg.height or nil
+  local total_width = cfg.position ~= "bottom" and cfg.width or nil
+
   if cfg.position == "bottom" then
-    vim.cmd("botright " .. cfg.height .. "split")
+    vim.cmd("botright " .. (total_height + 1) .. "split")
   else
-    vim.cmd("botright " .. cfg.width .. "vsplit")
+    vim.cmd("botright " .. total_width .. "vsplit")
   end
 
+  -- This window becomes the header (1 line)
+  state.header_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(state.header_win, state.header_buf)
+  vim.wo[state.header_win].number = false
+  vim.wo[state.header_win].relativenumber = false
+  vim.wo[state.header_win].signcolumn = "no"
+  vim.wo[state.header_win].cursorline = false
+  vim.wo[state.header_win].winfixheight = true
+  vim.wo[state.header_win].statusline = " "
+  vim.api.nvim_win_set_height(state.header_win, 1)
+
+  -- Open terminal split below the header
+  vim.cmd("belowright " .. (total_height and total_height - 1 or "") .. "split")
   state.win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.win, active.buf)
-
   vim.wo[state.win].number = false
   vim.wo[state.win].relativenumber = false
   vim.wo[state.win].signcolumn = "no"
   vim.wo[state.win].winfixheight = true
   vim.wo[state.win].winfixwidth = true
+  vim.wo[state.win].statusline = " "
 
   M._apply_keymaps()
+  render_header()
 
+  -- Track window close — clean up both windows
   vim.api.nvim_create_autocmd("WinClosed", {
     pattern = tostring(state.win),
     once = true,
     callback = function()
       state.win = nil
+      -- Also close header
+      if state.header_win and vim.api.nvim_win_is_valid(state.header_win) then
+        vim.api.nvim_win_close(state.header_win, true)
+      end
+      state.header_win = nil
+      state.header_buf = nil
     end,
   })
-
-  update_title()
 end
 
 function M.hide()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, false)
   end
+  if state.header_win and vim.api.nvim_win_is_valid(state.header_win) then
+    vim.api.nvim_win_close(state.header_win, true)
+  end
   state.win = nil
+  state.header_win = nil
+  state.header_buf = nil
 end
 
 function M.toggle()
@@ -236,6 +281,8 @@ function M.reset()
   state.buffers = {}
   state.active_idx = 0
   state.win = nil
+  state.header_win = nil
+  state.header_buf = nil
 end
 
 return M
