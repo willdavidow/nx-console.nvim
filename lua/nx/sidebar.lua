@@ -335,6 +335,10 @@ function M.open()
   split:mount()
   state.split = split
 
+  -- Set sidebar title via winbar
+  local icons = config.get().icons
+  vim.wo[split.winid].winbar = " " .. icons.nx .. " Nx Explorer"
+
   local tree = setup_tree(split)
   setup_keymaps(split, function() return state.tree end)
 

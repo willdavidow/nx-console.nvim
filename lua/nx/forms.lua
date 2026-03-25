@@ -287,18 +287,16 @@ function M.open(title, fields, on_submit)
     return tags
   end
 
-  --- Open a nui Input popup just below the current field with a full rounded border.
+  --- Open a nui Input popup centered just above the form modal.
   local function open_input(label, default_val, callback)
     local Input = require("nui.input")
-    local pos = value_positions[current_field] or { row = 0, col = 0 }
 
-    -- Calculate absolute screen position from the form window
+    -- Position: centered above the form, same width
     local win_row = vim.api.nvim_win_get_position(popup.winid)[1]
     local win_col = vim.api.nvim_win_get_position(popup.winid)[2]
-    -- +1 for the form's top border, +1 to go below the field line
-    local abs_row = win_row + pos.row + 2
-    local abs_col = win_col + pos.col + 1
-    local input_width = math.max(width - pos.col - 2, 20)
+    -- 3 lines above the form (border + content + border of the input = 3 rows)
+    local abs_row = math.max(win_row - 3, 0)
+    local abs_col = win_col + 1  -- align with form content
 
     local input_popup = Input({
       position = {
@@ -306,7 +304,7 @@ function M.open(title, fields, on_submit)
         col = abs_col,
       },
       relative = "editor",
-      size = { width = input_width },
+      size = { width = width - 2 },
       border = {
         style = "rounded",
         text = { top = " " .. label .. " ", top_align = "left" },
