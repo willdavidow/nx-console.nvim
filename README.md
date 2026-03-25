@@ -1,4 +1,4 @@
-# nx.nvim
+# nx-console.nvim
 
 A first-class Nx monorepo experience for Neovim, powered by [snacks.nvim](https://github.com/folke/snacks.nvim) and [nui.nvim](https://github.com/MunifTanjim/nui.nvim).
 
