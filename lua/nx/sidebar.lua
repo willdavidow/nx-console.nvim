@@ -44,7 +44,7 @@ local function build_items(callback)
           local items = {}
           local idx = 0
 
-          local function add_group(group_name, group_icon, group_projects)
+          local function add_group(group_name, group_icon, group_projects, is_last_group)
             if #group_projects == 0 then return end
             idx = idx + 1
             local group_item = {
@@ -52,11 +52,13 @@ local function build_items(callback)
               text = group_icon .. " " .. group_name,
               item_type = "group",
               group_name = group_name,
+              last = is_last_group,
             }
             table.insert(items, group_item)
 
-            for _, detail in ipairs(group_projects) do
+            for pi_idx, detail in ipairs(group_projects) do
               idx = idx + 1
+              local is_last_project = (pi_idx == #group_projects)
               local has_running = false
               for _, tgt in ipairs(detail.targets) do
                 if runner.is_running(detail.name, tgt.name) then
@@ -79,11 +81,13 @@ local function build_items(callback)
                 project_root = detail.root,
                 has_running = has_running,
                 parent = group_item,
+                last = is_last_project,
               }
               table.insert(items, project_item)
 
-              for _, tgt in ipairs(detail.targets) do
+              for tgt_idx, tgt in ipairs(detail.targets) do
                 idx = idx + 1
+                local is_last_target = (tgt_idx == #detail.targets)
                 local is_running = runner.is_running(detail.name, tgt.name)
                 local tgt_icon = is_running and icons.running or icons.target
                 table.insert(items, {
@@ -95,13 +99,17 @@ local function build_items(callback)
                   executor = tgt.executor or "",
                   is_running = is_running,
                   parent = project_item,
+                  last = is_last_target,
                 })
               end
             end
           end
 
-          add_group("apps", icons.app, apps)
-          add_group("libs", icons.lib, libs)
+          -- Determine which groups exist for the last flag
+          local has_apps = #apps > 0
+          local has_libs = #libs > 0
+          add_group("apps", icons.app, apps, not has_libs)
+          add_group("libs", icons.lib, libs, true)
 
           callback(items)
         end
@@ -149,15 +157,21 @@ function M.open()
       tree = true,
       formatters = { file = { filename_only = true } },
       format = function(item, picker)
-        local ret = { { item.text } }
+        -- Use Snacks' built-in tree formatter for indentation lines
+        local tree_indent = require("snacks.picker.format").tree(item, picker)
+        local ret = {}
+        vim.list_extend(ret, tree_indent)
+
         if item.item_type == "group" then
-          ret = { { item.text, "Title" } }
+          ret[#ret + 1] = { item.text, "Title" }
         elseif item.item_type == "project" then
           local hl = item.has_running and "DiagnosticOk" or "Function"
-          ret = { { item.text, hl } }
+          ret[#ret + 1] = { item.text, hl }
         elseif item.item_type == "target" then
           local hl = item.is_running and "DiagnosticOk" or "Special"
-          ret = { { item.text, hl } }
+          ret[#ret + 1] = { item.text, hl }
+        else
+          ret[#ret + 1] = { item.text }
         end
         return ret
       end,
