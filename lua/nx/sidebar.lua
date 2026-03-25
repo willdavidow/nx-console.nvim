@@ -8,8 +8,20 @@ local M = {}
 
 local state = {
   picker = nil,
-  collapsed = {},  -- set of item IDs that are collapsed
+  collapsed = nil,  -- set of item IDs that are collapsed (nil = not initialized yet)
 }
+
+--- Ensure collapsed state is initialized (everything collapsed by default).
+--- @param project_details table[]
+local function init_collapsed(project_details)
+  if state.collapsed then return end
+  state.collapsed = {}
+  state.collapsed["_group_apps"] = true
+  state.collapsed["_group_libs"] = true
+  for _, d in ipairs(project_details) do
+    state.collapsed[d.name] = true
+  end
+end
 
 --- Build a flat list of picker items with parent references for tree rendering.
 --- @param callback fun(items: table[])
@@ -40,6 +52,9 @@ local function build_items(callback)
           end
           table.sort(apps, function(a, b) return a.name < b.name end)
           table.sort(libs, function(a, b) return a.name < b.name end)
+
+          -- Initialize collapsed state on first load (everything collapsed)
+          init_collapsed(project_details)
 
           local icons = config.get().icons
           local items = {}
@@ -204,12 +219,7 @@ function M.open()
           else
             state.collapsed[item.node_id] = true
           end
-          -- Rebuild items with new collapse state
-          build_items(function(new_items)
-            if state.picker and not state.picker.closed then
-              state.picker:set_items(new_items)
-            end
-          end)
+          M._reopen()
         end
       end,
       actions = {
@@ -252,27 +262,18 @@ function M.open()
         end,
         refresh_tree = function(picker)
           projects.reset()
-          build_items(function(new_items)
-            picker:set_items(new_items)
-          end)
+          state.collapsed = nil  -- reset collapse state
+          M._reopen()
         end,
         collapse_node = function(picker, item)
           if not item or not item.node_id then return end
           state.collapsed[item.node_id] = true
-          build_items(function(new_items)
-            if state.picker and not state.picker.closed then
-              state.picker:set_items(new_items)
-            end
-          end)
+          M._reopen()
         end,
         expand_node = function(picker, item)
           if not item or not item.node_id then return end
           state.collapsed[item.node_id] = nil
-          build_items(function(new_items)
-            if state.picker and not state.picker.closed then
-              state.picker:set_items(new_items)
-            end
-          end)
+          M._reopen()
         end,
       },
       win = {
@@ -314,14 +315,23 @@ function M.toggle()
   end
 end
 
+--- Close and reopen the sidebar with fresh items (preserves collapse state).
+function M._reopen()
+  local was_open = state.picker and not state.picker.closed
+  if was_open then
+    state.picker:close()
+    state.picker = nil
+  end
+  -- Schedule to let the close finish before reopening
+  vim.schedule(function()
+    M.open()
+  end)
+end
+
 --- Refresh the sidebar if it's open (called by NxTaskChanged event).
 function M.refresh()
   if state.picker and not state.picker.closed then
-    build_items(function(new_items)
-      if state.picker and not state.picker.closed then
-        state.picker:set_items(new_items)
-      end
-    end)
+    M._reopen()
   end
 end
 
