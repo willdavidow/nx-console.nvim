@@ -245,32 +245,43 @@ function M.open(title, fields, on_submit)
     return name_lower == "project" or name_lower == "projectname"
   end
 
-  --- Open a nui Input popup overlaid at the value position of the current field.
+  --- Extract tag constraints from a description like "must be type:ui or type:feature".
+  --- @param desc string
+  --- @return string[] tags e.g. {"type:ui", "type:feature"}
+  local function extract_tag_constraints(desc)
+    if not desc then return {} end
+    local tags = {}
+    -- Match patterns like "type:ui", "scope:shared", etc.
+    for tag in desc:gmatch("(%w+:%w[%w%-]*)") do
+      table.insert(tags, tag)
+    end
+    return tags
+  end
+
+  --- Open a nui Input popup that spans the full field row.
   local function open_input(label, default_val, callback)
     local Input = require("nui.input")
     local pos = value_positions[current_field] or { row = 0, col = 0 }
-    -- Input width: from the value column to the right edge of the form
-    local input_width = math.max(width - pos.col - 2, 20)
 
     local input_popup = Input({
       position = {
         row = pos.row,
-        col = pos.col,
+        col = 0,
       },
       relative = {
         type = "win",
         winid = popup.winid,
       },
-      size = { width = input_width },
+      size = { width = width },
       border = {
-        style = { "╭", "─", "╮", "│", "╯", "─", "╰", "│" },
+        style = { "├", "─", "┤", "│", "┤", "─", "├", "│" },
         text = { top = " " .. label .. " ", top_align = "left" },
       },
       win_options = {
-        winhighlight = "Normal:Normal,FloatBorder:Function",
+        winhighlight = "Normal:Normal,FloatBorder:FloatBorder",
       },
     }, {
-      prompt = " ",
+      prompt = "  ",
       default_value = default_val or "",
       on_submit = function(value)
         callback(value)
@@ -313,30 +324,71 @@ function M.open(title, fields, on_submit)
       end)
 
     elseif is_project_field(f) then
-      -- Project field: offer project names as a select list
-      local projects = require("nx.projects")
-      projects.list(function(names)
+      -- Project field: offer project names filtered by tag constraints
+      local projects_mod = require("nx.projects")
+      local tag_constraints = extract_tag_constraints(f.description)
+
+      projects_mod.list(function(names)
         if #names == 0 then
-          -- Fall back to text input
           open_input(f.name, tostring(f.value or ""), function(val)
             if val then f.value = val end
             refocus()
           end)
           return
         end
-        table.sort(names)
-        vim.ui.select(names, {
-          prompt = f.name .. ":",
-          format_item = function(item)
-            local marker = item == f.value and "● " or "  "
-            return marker .. item
-          end,
-        }, function(choice)
-          if choice then
-            f.value = choice
+
+        -- If there are tag constraints, filter projects by tags
+        if #tag_constraints > 0 then
+          local filtered = {}
+          local pending = #names
+          for _, name in ipairs(names) do
+            projects_mod.detail(name, function(detail)
+              local tags = detail.tags or {}
+              local matches = false
+              for _, constraint in ipairs(tag_constraints) do
+                if vim.tbl_contains(tags, constraint) then
+                  matches = true
+                  break
+                end
+              end
+              if matches then
+                table.insert(filtered, name)
+              end
+              pending = pending - 1
+              if pending == 0 then
+                table.sort(filtered)
+                if #filtered == 0 then
+                  -- No matches — show all as fallback
+                  table.sort(names)
+                  filtered = names
+                end
+                vim.ui.select(filtered, {
+                  prompt = f.name .. ":",
+                  format_item = function(item)
+                    local marker = item == f.value and "● " or "  "
+                    return marker .. item
+                  end,
+                }, function(choice)
+                  if choice then f.value = choice end
+                  refocus()
+                end)
+              end
+            end)
           end
-          refocus()
-        end)
+        else
+          -- No constraints — show all projects
+          table.sort(names)
+          vim.ui.select(names, {
+            prompt = f.name .. ":",
+            format_item = function(item)
+              local marker = item == f.value and "● " or "  "
+              return marker .. item
+            end,
+          }, function(choice)
+            if choice then f.value = choice end
+            refocus()
+          end)
+        end
       end)
 
     elseif f.type == "array" then

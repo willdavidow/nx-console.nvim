@@ -46,6 +46,7 @@ function M.parse_project_detail(json_str)
     root = raw.root or "",
     type = raw.projectType or "library",
     targets = targets,
+    tags = raw.tags or {},
   }
 end
 
