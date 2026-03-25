@@ -184,10 +184,20 @@ function M.open()
         search = vim.trim(search):lower()
 
         if search == "" then
-          -- Browse mode: return only visible (non-collapsed) items
+          -- Browse mode: check collapse state dynamically (not from cached field)
           local visible = {}
           for _, item in ipairs(state.all_items) do
-            if not item.collapsed_parent then
+            local hidden = false
+            -- Check if any ancestor is collapsed
+            local p = item.parent
+            while p do
+              if p.node_id and state.collapsed[p.node_id] then
+                hidden = true
+                break
+              end
+              p = p.parent
+            end
+            if not hidden then
               table.insert(visible, item)
             end
           end
@@ -265,7 +275,7 @@ function M.open()
           else
             state.collapsed[item.node_id] = true
           end
-          M._update_items()
+          M._refresh_view()
         end
       end,
       actions = {
@@ -314,12 +324,12 @@ function M.open()
         collapse_node = function(picker, item)
           if not item or not item.node_id then return end
           state.collapsed[item.node_id] = true
-          M._update_items()
+          M._refresh_view()
         end,
         expand_node = function(picker, item)
           if not item or not item.node_id then return end
           state.collapsed[item.node_id] = nil
-          M._update_items()
+          M._refresh_view()
         end,
       },
       win = {
@@ -361,7 +371,15 @@ function M.toggle()
   end
 end
 
---- Update the picker items in-place without closing/reopening.
+--- Lightweight refresh: re-run the finder with current collapse state.
+--- No async rebuild needed — just updates the view.
+function M._refresh_view()
+  if not state.picker or state.picker.closed then return end
+  state.picker.finder.filter = nil
+  state.picker:find()
+end
+
+--- Full rebuild: re-fetch items from nx CLI and update the picker.
 --- Preserves cursor position and avoids flicker.
 function M._update_items()
   if not state.picker or state.picker.closed then return end
