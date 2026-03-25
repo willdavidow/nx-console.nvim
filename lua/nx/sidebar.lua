@@ -178,6 +178,7 @@ function M.open()
       title = "Nx Explorer",
       items = items,
       focus = "list",  -- start in normal mode navigating the tree
+      matcher = { keep_parents = true },  -- preserve tree context when filtering
       layout = {
         preset = "sidebar",
         preview = false,
@@ -219,7 +220,7 @@ function M.open()
           else
             state.collapsed[item.node_id] = true
           end
-          M._reopen()
+          M._update_items()
         end
       end,
       actions = {
@@ -263,17 +264,17 @@ function M.open()
         refresh_tree = function(picker)
           projects.reset()
           state.collapsed = nil  -- reset collapse state
-          M._reopen()
+          M._update_items()
         end,
         collapse_node = function(picker, item)
           if not item or not item.node_id then return end
           state.collapsed[item.node_id] = true
-          M._reopen()
+          M._update_items()
         end,
         expand_node = function(picker, item)
           if not item or not item.node_id then return end
           state.collapsed[item.node_id] = nil
-          M._reopen()
+          M._update_items()
         end,
       },
       win = {
@@ -315,23 +316,47 @@ function M.toggle()
   end
 end
 
---- Close and reopen the sidebar with fresh items (preserves collapse state).
-function M._reopen()
-  local was_open = state.picker and not state.picker.closed
-  if was_open then
-    state.picker:close()
-    state.picker = nil
+--- Update the picker items in-place without closing/reopening.
+--- Preserves cursor position and avoids flicker.
+function M._update_items()
+  if not state.picker or state.picker.closed then return end
+
+  -- Remember current cursor line
+  local cursor_idx = nil
+  local current = state.picker:current()
+  if current then
+    cursor_idx = current.idx
   end
-  -- Schedule to let the close finish before reopening
-  vim.schedule(function()
-    M.open()
+
+  build_items(function(new_items)
+    if not state.picker or state.picker.closed then return end
+    -- Replace the finder function to return new items
+    state.picker.finder._find = function()
+      return new_items
+    end
+    -- Force the finder to think it needs to re-run
+    state.picker.finder.filter = nil
+    state.picker:find()
+
+    -- Restore cursor position (schedule to let render finish)
+    if cursor_idx then
+      vim.schedule(function()
+        if state.picker and not state.picker.closed and state.picker.list then
+          -- Try to stay on the same index, clamped to new item count
+          local target = math.min(cursor_idx, #new_items)
+          if target > 0 then
+            state.picker.list:view(target)
+          end
+        end
+      end)
+    end
   end)
 end
 
 --- Refresh the sidebar if it's open (called by NxTaskChanged event).
 function M.refresh()
   if state.picker and not state.picker.closed then
-    M._reopen()
+    M._update_items()
   end
 end
 
