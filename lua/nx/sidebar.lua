@@ -177,8 +177,9 @@ function M.open()
 
     state.picker = snacks.picker({
       title = "Nx Explorer",
-      -- Finder re-runs on every search change. Returns all items when
-      -- searching, only visible items when browsing.
+      -- live = true makes the finder re-run on every keystroke,
+      -- with ctx.filter.search containing the typed text.
+      live = true,
       finder = function(opts, ctx)
         local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
         if searching then
