@@ -6,30 +6,111 @@ local M = {}
 local state = {
   buffers = {},
   active_idx = 0,
-  win = nil,
+  win = nil,           -- terminal split window
+  tab_buf = nil,       -- floating tab bar buffer
+  tab_win = nil,       -- floating tab bar window (non-focusable)
 }
 
---- Update the panel winbar title. Re-applies on every buffer switch
---- to ensure terminal buffers don't suppress it.
-local function update_title()
+--- Build tab bar content and render into the tab buffer.
+local function render_tab_bar()
+  if not state.tab_buf or not vim.api.nvim_buf_is_valid(state.tab_buf) then return end
   if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
-  local active_entry = state.buffers[state.active_idx]
-  if not active_entry then return end
+
   local icons = config.get().icons
-  local total = #state.buffers
-  local idx = state.active_idx
-  local title = " " .. icons.nx .. " " .. active_entry.label
-  if total > 1 then
-    title = title .. "  [" .. idx .. "/" .. total .. "]  ]t/[t switch  <C-c> kill"
-  end
-  title = title .. "  " .. icons.running
-  local escaped = title:gsub("%%", "%%%%")
-  -- Use vim.schedule to ensure this runs after any terminal buffer setup
-  vim.schedule(function()
-    if state.win and vim.api.nvim_win_is_valid(state.win) then
-      vim.wo[state.win].winbar = escaped .. "%="
+  local parts = {}
+  local highlights = {}
+  local col = 0
+
+  -- Build tab-style segments: " ● label " for each buffer
+  for i, entry in ipairs(state.buffers) do
+    local is_active = (i == state.active_idx)
+    local segment = " " .. icons.running .. " " .. entry.label .. " "
+    table.insert(parts, segment)
+    local hl = is_active and "TabLineSel" or "TabLine"
+    table.insert(highlights, { hl = hl, start = col, finish = col + #segment })
+    col = col + #segment
+
+    if i < #state.buffers then
+      local sep = "│"
+      table.insert(parts, sep)
+      table.insert(highlights, { hl = "TabLineFill", start = col, finish = col + #sep })
+      col = col + #sep
     end
-  end)
+  end
+
+  -- Keybind hints on the right side
+  local hints = "  ]t/[t switch  <C-c> kill  q hide"
+  local padding_needed = vim.api.nvim_win_get_width(state.win) - col - #hints
+  if padding_needed > 0 then
+    local fill = string.rep(" ", padding_needed)
+    table.insert(parts, fill)
+    table.insert(highlights, { hl = "TabLineFill", start = col, finish = col + #fill })
+    col = col + #fill
+  end
+  table.insert(parts, hints)
+  table.insert(highlights, { hl = "TabLineFill", start = col, finish = col + #hints })
+
+  local line = table.concat(parts)
+
+  vim.bo[state.tab_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(state.tab_buf, 0, -1, false, { line })
+  vim.bo[state.tab_buf].modifiable = false
+
+  -- Apply highlights
+  local ns = vim.api.nvim_create_namespace("nx_panel_tab")
+  vim.api.nvim_buf_clear_namespace(state.tab_buf, ns, 0, -1)
+  for _, hl in ipairs(highlights) do
+    vim.api.nvim_buf_add_highlight(state.tab_buf, ns, hl.hl, 0, hl.start, hl.finish)
+  end
+
+  -- Resize float to match panel width
+  if state.tab_win and vim.api.nvim_win_is_valid(state.tab_win) then
+    vim.api.nvim_win_set_config(state.tab_win, {
+      relative = "win",
+      win = state.win,
+      width = vim.api.nvim_win_get_width(state.win),
+      height = 1,
+      row = 0,
+      col = 0,
+    })
+  end
+end
+
+--- Create the floating tab bar anchored to the top of the panel window.
+local function create_tab_bar()
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+
+  state.tab_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[state.tab_buf].bufhidden = "wipe"
+  vim.bo[state.tab_buf].buflisted = false
+  vim.bo[state.tab_buf].buftype = "nofile"
+  vim.bo[state.tab_buf].modifiable = false
+
+  state.tab_win = vim.api.nvim_open_win(state.tab_buf, false, {
+    relative = "win",
+    win = state.win,
+    row = 0,
+    col = 0,
+    width = vim.api.nvim_win_get_width(state.win),
+    height = 1,
+    focusable = false,
+    zindex = 50,
+    style = "minimal",
+  })
+
+  -- Match tabline look
+  vim.wo[state.tab_win].winhighlight = "Normal:TabLineFill"
+
+  render_tab_bar()
+end
+
+--- Destroy the floating tab bar.
+local function destroy_tab_bar()
+  if state.tab_win and vim.api.nvim_win_is_valid(state.tab_win) then
+    vim.api.nvim_win_close(state.tab_win, true)
+  end
+  state.tab_win = nil
+  state.tab_buf = nil
 end
 
 function M.add_buffer(bufnr, label)
@@ -42,7 +123,7 @@ function M.add_buffer(bufnr, label)
     vim.keymap.set("n", "q", function() M.hide() end, map_opts)
     vim.keymap.set({ "n", "t" }, "<C-c>", function() M.kill_active() end, map_opts)
   end
-  update_title()
+  render_tab_bar()
 end
 
 function M.remove_buffer(bufnr)
@@ -59,7 +140,7 @@ function M.remove_buffer(bufnr)
     local active = M.get_active()
     if active then
       vim.api.nvim_win_set_buf(state.win, active.buf)
-      update_title()
+      render_tab_bar()
     elseif #state.buffers == 0 then
       M.hide()
     end
@@ -87,7 +168,7 @@ function M.select_buffer(bufnr)
       break
     end
   end
-  update_title()
+  render_tab_bar()
 end
 
 function M.next_buffer()
@@ -97,7 +178,7 @@ function M.next_buffer()
   if active and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
-  update_title()
+  render_tab_bar()
 end
 
 function M.prev_buffer()
@@ -110,7 +191,7 @@ function M.prev_buffer()
   if active and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
-  update_title()
+  render_tab_bar()
 end
 
 function M._apply_keymaps()
@@ -156,16 +237,13 @@ function M.show()
   vim.wo[state.win].winfixwidth = true
 
   M._apply_keymaps()
+  create_tab_bar()
 
-  -- Re-apply winbar whenever a buffer is displayed in the panel window
-  -- (guards against terminal setup clearing it)
-  vim.api.nvim_create_autocmd({ "BufWinEnter", "TermOpen", "TermEnter" }, {
-    group = vim.api.nvim_create_augroup("NxPanelWinbar", { clear = true }),
+  -- Resize the tab bar when the panel resizes
+  vim.api.nvim_create_autocmd("WinResized", {
+    group = vim.api.nvim_create_augroup("NxPanelResize", { clear = true }),
     callback = function()
-      if state.win and vim.api.nvim_win_is_valid(state.win)
-        and vim.api.nvim_get_current_win() == state.win then
-        update_title()
-      end
+      render_tab_bar()
     end,
   })
 
@@ -173,20 +251,20 @@ function M.show()
     pattern = tostring(state.win),
     once = true,
     callback = function()
+      destroy_tab_bar()
       state.win = nil
-      pcall(vim.api.nvim_del_augroup_by_name, "NxPanelWinbar")
+      pcall(vim.api.nvim_del_augroup_by_name, "NxPanelResize")
     end,
   })
-
-  update_title()
 end
 
 function M.hide()
+  destroy_tab_bar()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, false)
   end
   state.win = nil
-  pcall(vim.api.nvim_del_augroup_by_name, "NxPanelWinbar")
+  pcall(vim.api.nvim_del_augroup_by_name, "NxPanelResize")
 end
 
 function M.toggle()
@@ -257,6 +335,8 @@ function M.reset()
   state.buffers = {}
   state.active_idx = 0
   state.win = nil
+  state.tab_buf = nil
+  state.tab_win = nil
 end
 
 return M
