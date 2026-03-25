@@ -318,17 +318,33 @@ function M.pick()
   })
 end
 
---- Kill the process running in the active panel buffer.
+--- Kill the active process and close its tab.
+--- If it was the last tab, closes the entire panel.
 function M.kill_active()
   local active = M.get_active()
   if not active then return end
-  if vim.api.nvim_buf_is_valid(active.buf) then
-    local chan = vim.bo[active.buf].channel
+  local bufnr = active.buf
+  local label = active.label
+
+  -- Kill the process
+  if vim.api.nvim_buf_is_valid(bufnr) then
+    local chan = vim.bo[bufnr].channel
     if chan and chan > 0 then
       vim.fn.jobstop(chan)
-      notify.info("Killed: " .. active.label)
     end
   end
+
+  -- Remove the buffer from the panel
+  M.remove_buffer(bufnr)
+
+  -- Clean up the terminal buffer
+  if vim.api.nvim_buf_is_valid(bufnr) then
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end
+
+  -- If no tabs left, hide closes the panel (remove_buffer already calls hide)
+  -- If tabs remain, remove_buffer already switched to the next one
+  notify.info("Killed: " .. label)
 end
 
 function M.reset()
