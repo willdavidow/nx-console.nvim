@@ -177,21 +177,24 @@ function M.open()
 
     state.picker = snacks.picker({
       title = "Nx Explorer",
-      items = all_items,
-      focus = "list",
-      matcher = { keep_parents = true },
-      -- When browsing (empty search), hide collapsed children.
-      -- When searching, show everything so all items are findable.
-      transform = function(item, ctx)
+      -- Finder re-runs on every search change. Returns all items when
+      -- searching, only visible items when browsing.
+      finder = function(opts, ctx)
         local searching = ctx.filter and ctx.filter.search and ctx.filter.search ~= ""
         if searching then
-          return item
+          return state.all_items
         end
-        if item.collapsed_parent then
-          return false
+        -- Filter out collapsed children for browse mode
+        local visible = {}
+        for _, item in ipairs(state.all_items) do
+          if not item.collapsed_parent then
+            table.insert(visible, item)
+          end
         end
-        return item
+        return visible
       end,
+      focus = "list",
+      matcher = { keep_parents = true },
       -- Sort by original idx to keep tree order (parents before children)
       sort = { fields = { "idx" } },
       layout = {
@@ -346,10 +349,7 @@ function M._update_items()
   build_items(function(all_items)
     if not state.picker or state.picker.closed then return end
     state.all_items = all_items
-    -- Replace finder to return new items
-    state.picker.finder._find = function()
-      return all_items
-    end
+    -- Force finder to re-run with updated items
     state.picker.finder.filter = nil
     state.picker:find()
 
