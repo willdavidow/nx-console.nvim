@@ -258,30 +258,31 @@ function M.open(title, fields, on_submit)
     return tags
   end
 
-  --- Open a nui Input popup that spans the full field row.
+  --- Open a nui Input popup at the value column with a full rounded border.
   local function open_input(label, default_val, callback)
     local Input = require("nui.input")
     local pos = value_positions[current_field] or { row = 0, col = 0 }
+    local input_width = math.max(width - pos.col - 2, 20)
 
     local input_popup = Input({
       position = {
         row = pos.row,
-        col = 0,
+        col = pos.col,
       },
       relative = {
         type = "win",
         winid = popup.winid,
       },
-      size = { width = width },
+      size = { width = input_width },
       border = {
-        style = { "├", "─", "┤", "│", "┤", "─", "├", "│" },
+        style = "rounded",
         text = { top = " " .. label .. " ", top_align = "left" },
       },
       win_options = {
-        winhighlight = "Normal:Normal,FloatBorder:FloatBorder",
+        winhighlight = "Normal:Normal,FloatBorder:Function",
       },
     }, {
-      prompt = "  ",
+      prompt = " ",
       default_value = default_val or "",
       on_submit = function(value)
         callback(value)

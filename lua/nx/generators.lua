@@ -428,11 +428,34 @@ function M._open_form(collection_name, generator_name)
       return
     end
 
+    -- Add a built-in dry-run toggle at the end
+    table.insert(fields, {
+      name = "dryRun",
+      type = "boolean",
+      description = "Preview changes without writing to disk",
+      default = false,
+      required = false,
+    })
+
     local form_fields = forms.apply_defaults(fields)
     local title = "nx generate " .. collection_name .. ":" .. generator_name
 
     forms.open(title, form_fields, function(completed_fields)
-      local args = forms.build_cli_args(completed_fields)
+      -- Extract and remove the dryRun field before building args
+      local dry_run = false
+      local gen_fields = {}
+      for _, f in ipairs(completed_fields) do
+        if f.name == "dryRun" then
+          dry_run = f.value
+        else
+          table.insert(gen_fields, f)
+        end
+      end
+
+      local args = forms.build_cli_args(gen_fields)
+      if dry_run then
+        table.insert(args, "--dry-run")
+      end
 
       if cfg.confirm_before_run then
         local cmd_preview = workspace.nx_bin() .. " generate " .. collection_name .. ":" .. generator_name
