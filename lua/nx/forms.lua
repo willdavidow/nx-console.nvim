@@ -230,6 +230,50 @@ function M.open(title, fields, on_submit)
     end)
   end
 
+  --- Check if a field should offer project name completion.
+  local function is_project_field(f)
+    local name_lower = f.name:lower()
+    return name_lower == "project" or name_lower == "projectname"
+  end
+
+  --- Open a nui Input popup positioned just below the form.
+  local function open_input(label, default_val, callback)
+    local Input = require("nui.input")
+    local input_popup = Input({
+      position = {
+        row = 1,   -- relative: 1 row below the anchor
+        col = 0,
+      },
+      relative = {
+        type = "win",
+        winid = popup.winid,
+      },
+      size = { width = width - 4 },
+      border = {
+        style = "rounded",
+        text = { top = " " .. label .. " ", top_align = "left" },
+      },
+      win_options = { winhighlight = "Normal:Normal,FloatBorder:FloatBorder" },
+    }, {
+      prompt = " ",
+      default_value = default_val or "",
+      on_submit = function(value)
+        callback(value)
+      end,
+      on_close = function()
+        callback(nil)
+      end,
+    })
+
+    input_popup:mount()
+
+    -- Esc in insert mode closes the input
+    input_popup:map("i", "<Esc>", function()
+      input_popup:unmount()
+      callback(nil)
+    end, { noremap = true })
+  end
+
   local function edit_field()
     local f = fields[current_field]
     if not f then return end
@@ -254,9 +298,36 @@ function M.open(title, fields, on_submit)
         refocus()
       end)
 
+    elseif is_project_field(f) then
+      -- Project field: offer project names as a select list
+      local projects = require("nx.projects")
+      projects.list(function(names)
+        if #names == 0 then
+          -- Fall back to text input
+          open_input(f.name, tostring(f.value or ""), function(val)
+            if val then f.value = val end
+            refocus()
+          end)
+          return
+        end
+        table.sort(names)
+        vim.ui.select(names, {
+          prompt = f.name .. ":",
+          format_item = function(item)
+            local marker = item == f.value and "● " or "  "
+            return marker .. item
+          end,
+        }, function(choice)
+          if choice then
+            f.value = choice
+          end
+          refocus()
+        end)
+      end)
+
     elseif f.type == "array" then
       local current_val = type(f.value) == "table" and table.concat(f.value, ", ") or ""
-      vim.ui.input({ prompt = f.name .. " (comma-separated): ", default = current_val }, function(input)
+      open_input(f.name .. " (comma-separated)", current_val, function(input)
         if input ~= nil then
           local items = {}
           for item in input:gmatch("[^,]+") do
@@ -268,7 +339,7 @@ function M.open(title, fields, on_submit)
       end)
 
     elseif f.type == "number" then
-      vim.ui.input({ prompt = f.name .. ": ", default = tostring(f.value or "") }, function(input)
+      open_input(f.name, tostring(f.value or ""), function(input)
         if input ~= nil then
           local num = tonumber(input)
           if num then
@@ -281,9 +352,9 @@ function M.open(title, fields, on_submit)
       end)
 
     else
-      -- String input
-      vim.ui.input({ prompt = f.name .. ": ", default = tostring(f.value or "") }, function(input)
-        if input ~= nil then
+      -- String input — nui Input popup below the form
+      open_input(f.name, tostring(f.value or ""), function(input)
+        if input then
           f.value = input
         end
         refocus()
