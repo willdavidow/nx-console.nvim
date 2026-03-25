@@ -60,10 +60,12 @@ local function format_value(f)
 end
 
 --- Render the full form buffer contents with highlights.
+--- Returns a table mapping field index → { row (0-indexed), col } of value position.
 local function render_form(popup, fields, current_field)
   local ns = vim.api.nvim_create_namespace("nx_form")
   local lines = {}
   local highlights = {}
+  local value_positions = {}
   local name_width = 0
 
   -- Find the longest field name for alignment
@@ -82,6 +84,10 @@ local function render_form(popup, fields, current_field)
 
     local value_str = format_value(f)
     if value_str == "" then value_str = "·" end
+
+    -- Track where the value starts for input positioning
+    local value_col = 2 + #label + #padding
+    value_positions[i] = { row = i - 1, col = value_col }
 
     local type_hint = ""
     if f.type == "enum" and f.options then
@@ -159,6 +165,8 @@ local function render_form(popup, fields, current_field)
   end
   -- Hints line highlight
   vim.api.nvim_buf_add_highlight(popup.bufnr, ns, "NonText", #fields + 1, 0, -1)
+
+  return value_positions
 end
 
 function M.open(title, fields, on_submit)
@@ -206,9 +214,10 @@ function M.open(title, fields, on_submit)
   popup:mount()
 
   local current_field = 1
+  local value_positions = {}
 
   local function refresh()
-    render_form(popup, fields, current_field)
+    value_positions = render_form(popup, fields, current_field)
     -- Position cursor on current field line
     pcall(vim.api.nvim_win_set_cursor, popup.winid, { current_field, 2 })
   end
@@ -236,24 +245,30 @@ function M.open(title, fields, on_submit)
     return name_lower == "project" or name_lower == "projectname"
   end
 
-  --- Open a nui Input popup positioned just below the form.
+  --- Open a nui Input popup overlaid at the value position of the current field.
   local function open_input(label, default_val, callback)
     local Input = require("nui.input")
+    local pos = value_positions[current_field] or { row = 0, col = 0 }
+    -- Input width: from the value column to the right edge of the form
+    local input_width = math.max(width - pos.col - 2, 20)
+
     local input_popup = Input({
       position = {
-        row = 1,   -- relative: 1 row below the anchor
-        col = 0,
+        row = pos.row,
+        col = pos.col,
       },
       relative = {
         type = "win",
         winid = popup.winid,
       },
-      size = { width = width - 4 },
+      size = { width = input_width },
       border = {
-        style = "rounded",
+        style = { "╭", "─", "╮", "│", "╯", "─", "╰", "│" },
         text = { top = " " .. label .. " ", top_align = "left" },
       },
-      win_options = { winhighlight = "Normal:Normal,FloatBorder:FloatBorder" },
+      win_options = {
+        winhighlight = "Normal:Normal,FloatBorder:Function",
+      },
     }, {
       prompt = " ",
       default_value = default_val or "",
@@ -267,7 +282,6 @@ function M.open(title, fields, on_submit)
 
     input_popup:mount()
 
-    -- Esc in insert mode closes the input
     input_popup:map("i", "<Esc>", function()
       input_popup:unmount()
       callback(nil)
