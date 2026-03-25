@@ -228,4 +228,79 @@ t.describe("generators.parse_schema", function()
   end)
 end)
 
+-- Sample `nx generate @nx/vite:configuration --help` text output
+local sample_help_text = [[
+ NX   generate @nx/vite:configuration [project] [options,...]
+
+
+From:  @nx/vite (v22.5.1)
+Name:  configuration (aliases: config)
+
+
+  Configure a project to use Vite.
+
+
+Options:
+    --compiler           Compiler to use for Vite   [string] [choices: "babel",
+                         when UI Framework is React.  "swc"] [default: "babel"]
+    --includeVitest      Use vitest for the test                      [boolean]
+                         suite.
+    --port               The port to use for the                       [number]
+                         development server
+    --project            The name of the project.                      [string]
+    --uiFramework        UI Framework to use for    [string] [choices: "react",
+                         Vite.                        "none"] [default: "none"]
+    --skipFormat         Skip formatting files.                       [boolean]
+]]
+
+t.describe("generators.parse_help_text", function()
+  t.it("extracts fields from help text output", function()
+    local fields = generators.parse_help_text(sample_help_text)
+    t.assert_eq(6, #fields)
+  end)
+
+  t.it("parses enum fields with choices", function()
+    local fields = generators.parse_help_text(sample_help_text)
+    local compiler = nil
+    for _, f in ipairs(fields) do
+      if f.name == "compiler" then compiler = f end
+    end
+    t.assert_true(compiler ~= nil)
+    t.assert_eq("enum", compiler.type)
+    t.assert_eq(2, #compiler.options)
+    t.assert_eq("babel", compiler.default)
+  end)
+
+  t.it("parses boolean fields", function()
+    local fields = generators.parse_help_text(sample_help_text)
+    local vitest = nil
+    for _, f in ipairs(fields) do
+      if f.name == "includeVitest" then vitest = f end
+    end
+    t.assert_true(vitest ~= nil)
+    t.assert_eq("boolean", vitest.type)
+  end)
+
+  t.it("parses number fields", function()
+    local fields = generators.parse_help_text(sample_help_text)
+    local port = nil
+    for _, f in ipairs(fields) do
+      if f.name == "port" then port = f end
+    end
+    t.assert_true(port ~= nil)
+    t.assert_eq("number", port.type)
+  end)
+
+  t.it("parses defaults on continuation lines", function()
+    local fields = generators.parse_help_text(sample_help_text)
+    local ui = nil
+    for _, f in ipairs(fields) do
+      if f.name == "uiFramework" then ui = f end
+    end
+    t.assert_true(ui ~= nil)
+    t.assert_eq("enum", ui.type)
+    t.assert_eq("none", ui.default)
+  end)
+end)
+
 t.done()

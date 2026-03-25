@@ -101,6 +101,9 @@ function M.parse_collections(json_str)
   return collections
 end
 
+--- Parse JSON schema format (if available).
+--- @param json_str string
+--- @return table[] fields
 function M.parse_schema(json_str)
   local ok, raw = pcall(vim.json.decode, json_str)
   if not ok or type(raw) ~= "table" then
@@ -134,6 +137,145 @@ function M.parse_schema(json_str)
     })
   end
 
+  table.sort(fields, function(a, b)
+    if a.required ~= b.required then
+      return a.required
+    end
+    return a.name < b.name
+  end)
+
+  return fields
+end
+
+--- Parse the text output of `nx generate <col>:<gen> --help` into fields.
+--- Handles lines like:
+---   --compiler       Description text      [string] [choices: "a", "b"] [default: "a"]
+---   --includeVitest  Description text                                           [boolean]
+--- @param text string raw help text
+--- @return table[] fields
+function M.parse_help_text(text)
+  local fields = {}
+  local in_options = false
+  local current_field = nil
+
+  for line in text:gmatch("[^\r\n]+") do
+    -- Detect the Options section
+    if line:match("^Options:") then
+      in_options = true
+    elseif in_options then
+      -- New option line: starts with whitespace + --name
+      local name = line:match("^%s+%-%-(%S+)")
+      if name then
+        -- Finish previous field
+        if current_field then
+          table.insert(fields, current_field)
+        end
+
+        -- Collect all the text after the flag name
+        local rest = line:match("^%s+%-%-" .. name:gsub("%-", "%%-") .. "%s+(.*)")
+        rest = rest or ""
+
+        -- Parse type from [string], [boolean], [number], [array]
+        -- Must match standalone [type] not inside [choices:...] or [default:...]
+        local field_type = rest:match("%[(%w+)%]") or "string"
+        if field_type == "count" then field_type = "number" end
+
+        -- Parse choices — may be on this line (complete or start of multi-line)
+        local choices_str = rest:match('%[choices:%s*(.*)')
+        local options = nil
+        if choices_str then
+          options = {}
+          for choice in choices_str:gmatch('"([^"]+)"') do
+            table.insert(options, choice)
+          end
+          if #options > 0 then
+            field_type = "enum"
+          end
+        end
+
+        -- Parse default: [default: "value"] or [default: true]
+        local default_val = rest:match('%[default:%s*"([^"]*)"%]')
+          or rest:match('%[default:%s*(%S+)%]')
+        if default_val == "true" then default_val = true
+        elseif default_val == "false" then default_val = false
+        elseif default_val and tonumber(default_val) then default_val = tonumber(default_val)
+        end
+
+        -- Extract description: everything before the first [
+        local desc = rest:match("^(.-)%s*%[") or rest
+        desc = vim.trim(desc)
+
+        current_field = {
+          name = name,
+          type = field_type,
+          description = desc,
+          default = default_val,
+          required = false,
+          options = options,
+        }
+      elseif current_field then
+        -- Continuation line: may contain more choices, defaults, or description text
+        local trimmed = vim.trim(line)
+        if trimmed ~= "" then
+          -- Extract any quoted values (choices continued from previous line)
+          if current_field.options then
+            for choice in trimmed:gmatch('"([^"]+)"') do
+              -- Avoid duplicates
+              local exists = false
+              for _, o in ipairs(current_field.options) do
+                if o == choice then exists = true end
+              end
+              if not exists then
+                table.insert(current_field.options, choice)
+              end
+            end
+            if #current_field.options > 0 then
+              current_field.type = "enum"
+            end
+          end
+          -- Check for new choices block starting on this line
+          if not current_field.options then
+            local new_choices = trimmed:match('%[choices:%s*(.*)')
+            if new_choices then
+              current_field.options = {}
+              for choice in new_choices:gmatch('"([^"]+)"') do
+                table.insert(current_field.options, choice)
+              end
+              if #current_field.options > 0 then
+                current_field.type = "enum"
+              end
+            end
+          end
+          -- Parse default
+          local cont_default = trimmed:match('%[default:%s*"([^"]*)"%]')
+            or trimmed:match('%[default:%s*(%S+)%]')
+          if cont_default then
+            if cont_default == "true" then current_field.default = true
+            elseif cont_default == "false" then current_field.default = false
+            elseif tonumber(cont_default) then current_field.default = tonumber(cont_default)
+            else current_field.default = cont_default end
+          end
+          -- Append to description if it's actual text (not metadata)
+          local desc_part = trimmed:match("^(.-)%s*%[") or trimmed
+          desc_part = vim.trim(desc_part)
+          if desc_part ~= "" and not desc_part:match("^%[") and not desc_part:match('^"') then
+            if current_field.description ~= "" then
+              current_field.description = current_field.description .. " " .. desc_part
+            else
+              current_field.description = desc_part
+            end
+          end
+        end
+      end
+    end
+  end
+
+  -- Don't forget the last field
+  if current_field then
+    table.insert(fields, current_field)
+  end
+
+  -- Sort: required first, then alphabetical
   table.sort(fields, function(a, b)
     if a.required ~= b.required then
       return a.required
@@ -203,9 +345,13 @@ function M.list_all(callback)
 end
 
 function M.get_schema(collection, generator, callback)
-  local cmd = workspace.nx_cmd({ "generate", collection .. ":" .. generator, "--help", "--json" })
+  local cmd = workspace.nx_cmd({ "generate", collection .. ":" .. generator, "--help" })
   utils.exec(cmd, function(stdout)
+    -- Try JSON first (some Nx versions), fall back to text parsing
     local fields = M.parse_schema(stdout)
+    if #fields == 0 then
+      fields = M.parse_help_text(stdout)
+    end
     callback(fields)
   end, function(err)
     notify.error("Failed to get generator schema: " .. (err or "unknown"))
