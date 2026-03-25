@@ -326,7 +326,7 @@ function M.kill_active()
   local bufnr = active.buf
   local label = active.label
 
-  -- Kill the process — on_exit in runner.lua will fire async
+  -- Kill the process
   if vim.api.nvim_buf_is_valid(bufnr) then
     local chan = vim.bo[bufnr].channel
     if chan and chan > 0 then
@@ -334,14 +334,17 @@ function M.kill_active()
     end
   end
 
-  -- Defer cleanup to give on_exit time to fire, then remove tab + buffer
-  vim.defer_fn(function()
-    M.remove_buffer(bufnr)
-    if vim.api.nvim_buf_is_valid(bufnr) then
-      pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
-    end
-    notify.info("Killed: " .. label)
-  end, 100)
+  -- Remove the buffer from the panel
+  M.remove_buffer(bufnr)
+
+  -- Clean up the terminal buffer
+  if vim.api.nvim_buf_is_valid(bufnr) then
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end
+
+  -- If no tabs left, hide closes the panel (remove_buffer already calls hide)
+  -- If tabs remain, remove_buffer already switched to the next one
+  notify.info("Killed: " .. label)
 end
 
 function M.reset()
