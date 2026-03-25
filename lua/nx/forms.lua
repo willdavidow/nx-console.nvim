@@ -208,6 +208,9 @@ function M.open(title, fields, on_submit)
     win_options = {
       cursorline = true,
       wrap = false,
+      number = false,
+      relativenumber = false,
+      signcolumn = "no",
     },
   })
 
@@ -234,6 +237,11 @@ function M.open(title, fields, on_submit)
     vim.schedule(function()
       if popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
         vim.api.nvim_set_current_win(popup.winid)
+        -- Re-apply window options that may have been reset
+        vim.wo[popup.winid].number = false
+        vim.wo[popup.winid].relativenumber = false
+        vim.wo[popup.winid].signcolumn = "no"
+        vim.wo[popup.winid].cursorline = true
         refresh()
       end
     end)
@@ -258,30 +266,34 @@ function M.open(title, fields, on_submit)
     return tags
   end
 
-  --- Open a nui Input popup just below the current field with a full border.
+  --- Open a nui Input popup just below the current field with a full rounded border.
   local function open_input(label, default_val, callback)
     local Input = require("nui.input")
     local pos = value_positions[current_field] or { row = 0, col = 0 }
 
-    -- Position below the current field line, indented to the value column.
-    -- row is relative to the form window: pos.row is 0-indexed line of the field,
-    -- +1 puts it just below that line.
+    -- Calculate absolute screen position from the form window
+    local win_row = vim.api.nvim_win_get_position(popup.winid)[1]
+    local win_col = vim.api.nvim_win_get_position(popup.winid)[2]
+    -- +1 for the form's top border, +1 to go below the field line
+    local abs_row = win_row + pos.row + 2
+    local abs_col = win_col + pos.col + 1
+    local input_width = math.max(width - pos.col - 2, 20)
+
     local input_popup = Input({
       position = {
-        row = pos.row + 1,
-        col = pos.col,
+        row = abs_row,
+        col = abs_col,
       },
-      relative = {
-        type = "win",
-        winid = popup.winid,
-      },
-      size = { width = math.max(width - pos.col - 2, 20) },
+      relative = "editor",
+      size = { width = input_width },
       border = {
         style = "rounded",
         text = { top = " " .. label .. " ", top_align = "left" },
       },
       win_options = {
         winhighlight = "Normal:Normal,FloatBorder:Function",
+        number = false,
+        relativenumber = false,
       },
     }, {
       prompt = " ",
