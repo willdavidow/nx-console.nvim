@@ -113,9 +113,32 @@ local function destroy_tab_bar()
   state.tab_buf = nil
 end
 
+--- Scroll the panel window to the bottom of the active buffer.
+local function scroll_to_bottom()
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
+  local active = state.buffers[state.active_idx]
+  if not active or not vim.api.nvim_buf_is_valid(active.buf) then return end
+  local line_count = vim.api.nvim_buf_line_count(active.buf)
+  pcall(vim.api.nvim_win_set_cursor, state.win, { line_count, 0 })
+end
+
 function M.add_buffer(bufnr, label)
   table.insert(state.buffers, { buf = bufnr, label = label })
   state.active_idx = #state.buffers
+
+  if vim.api.nvim_buf_is_valid(bufnr) then
+    -- Auto-scroll to bottom when new output arrives in this buffer
+    vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+      buffer = bufnr,
+      callback = function()
+        local active = state.buffers[state.active_idx]
+        if active and active.buf == bufnr then
+          scroll_to_bottom()
+        end
+      end,
+    })
+  end
+
   if vim.api.nvim_buf_is_valid(bufnr) then
     local map_opts = { noremap = true, silent = true, buffer = bufnr }
     vim.keymap.set("n", "]t", function() M.next_buffer() end, map_opts)
@@ -179,6 +202,7 @@ function M.next_buffer()
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
   render_tab_bar()
+  scroll_to_bottom()
 end
 
 function M.prev_buffer()
@@ -192,6 +216,7 @@ function M.prev_buffer()
     vim.api.nvim_win_set_buf(state.win, active.buf)
   end
   render_tab_bar()
+  scroll_to_bottom()
 end
 
 function M._apply_keymaps()
@@ -235,6 +260,10 @@ function M.show()
   vim.wo[state.win].signcolumn = "no"
   vim.wo[state.win].winfixheight = true
   vim.wo[state.win].winfixwidth = true
+
+  -- Scroll to the bottom of the terminal output
+  local line_count = vim.api.nvim_buf_line_count(active.buf)
+  vim.api.nvim_win_set_cursor(state.win, { line_count, 0 })
 
   M._apply_keymaps()
   create_tab_bar()
